@@ -42,6 +42,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -68,7 +70,10 @@ import com.jayant.spendsense.ui.components.StackedShareBar
 import com.jayant.spendsense.ui.components.TransactionRow
 import com.jayant.spendsense.ui.components.TransfersCategory
 import com.jayant.spendsense.ui.components.addMonths
-import com.jayant.spendsense.ui.components.categoryColor
+import com.jayant.spendsense.ui.components.ChartOtherColor
+import com.jayant.spendsense.ui.components.Overline
+import com.jayant.spendsense.ui.components.SkeletonBlock
+import com.jayant.spendsense.ui.components.chartColor
 import com.jayant.spendsense.ui.components.dayOfMonth
 import com.jayant.spendsense.ui.components.daysInMonth
 import com.jayant.spendsense.ui.components.formatDateTime
@@ -104,7 +109,7 @@ private data class MonthSummary(
     val recent: List<Transaction>,
 )
 
-private fun summarise(monthStart: Long, txns: List<Transaction>, previous: List<Transaction>): MonthSummary {
+private fun summarise(monthStart: Long, txns: List<Transaction>, previous: List<Transaction>, dark: Boolean): MonthSummary {
     val debits = txns.filter { it.type == TxnType.DEBIT }
     val credits = txns.filter { it.type == TxnType.CREDIT }
     val days = daysInMonth(monthStart)
@@ -113,15 +118,15 @@ private fun summarise(monthStart: Long, txns: List<Transaction>, previous: List<
 
     val catMap = debits.groupBy { it.category }.mapValues { (_, v) -> v.sumOf { it.effectiveAmount } }
         .filterValues { it > 0 }.toList().sortedByDescending { it.second }
-    val top = catMap.take(7).map { CategoryTotal(it.first, it.second, categoryColor(it.first)) }
+    val top = catMap.take(7).mapIndexed { i, it -> CategoryTotal(it.first, it.second, chartColor(i, dark)) }
     val rest = catMap.drop(7).sumOf { it.second }
-    val categories = if (rest > 0) top + CategoryTotal("More", rest, Color(0xFF5B6074)) else top
+    val categories = if (rest > 0) top + CategoryTotal("More", rest, ChartOtherColor) else top
 
     val merchants = debits.filter { !it.counterparty.isNullOrBlank() }
         .groupBy { it.counterparty!!.trim().lowercase() }
         .map { (_, list) ->
             val newest = list.first()
-            MerchantTotal(newest.counterparty!!.trim(), list.sumOf { it.effectiveAmount }, list.size, categoryColor(newest.category))
+            MerchantTotal(newest.counterparty!!.trim(), list.sumOf { it.effectiveAmount }, list.size, Color.Unspecified)
         }
         .filter { it.amount > 0 }.sortedByDescending { it.amount }.take(5)
 
@@ -168,13 +173,14 @@ fun DashboardScreen(onSeeAllTransactions: () -> Unit = {}) {
     var detail by remember { mutableStateOf<Transaction?>(null) }
     var splitFor by remember { mutableStateOf<Transaction?>(null) }
     val scope = rememberCoroutineScope()
+    val dark = MaterialTheme.spend.isDark
 
-    LaunchedEffect(monthStart, changes) {
+    LaunchedEffect(monthStart, changes, dark) {
         val (s, p) = withContext(Dispatchers.IO) {
             val end = addMonths(monthStart, 1)
             val txns = repo.between(monthStart, end)
             val prev = repo.between(addMonths(monthStart, -1), monthStart)
-            summarise(monthStart, txns, prev) to repo.pendingReview()
+            summarise(monthStart, txns, prev, dark) to repo.pendingReview()
         }
         summary = s
         pending = p
@@ -182,7 +188,7 @@ fun DashboardScreen(onSeeAllTransactions: () -> Unit = {}) {
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+        verticalArrangement = Arrangement.spacedBy(32.dp),
     ) {
         MonthHeader(
             monthStart, canGoForward = monthStart < currentMonth,
@@ -192,7 +198,7 @@ fun DashboardScreen(onSeeAllTransactions: () -> Unit = {}) {
 
         val s = summary
         if (s == null || s.monthStart != monthStart) {
-            Spacer(Modifier.height(240.dp))
+            DashboardSkeleton()
         } else if (s.count == 0 && pending.isEmpty()) {
             EmptyState(
                 "Nothing recorded in ${formatMonth(monthStart).substringBefore(' ')}",
@@ -223,7 +229,7 @@ private fun DashboardBody(
     onSeeAll: () -> Unit,
 ) {
     val monthStart = s.monthStart
-    Column(verticalArrangement = Arrangement.spacedBy(28.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(32.dp)) {
         HeroCard(s, Modifier.staggeredEntrance(0))
 
         if (pending.isNotEmpty()) {
@@ -262,8 +268,15 @@ private fun DashboardBody(
                         )
                     }
                 }
-                Spacer(Modifier.height(18.dp))
-                BarChart(s.daily, selectedDay, { selectedDay = it }, average = s.avgPerDay, labelEvery = 7)
+                Spacer(Modifier.height(16.dp))
+                val peak = s.daily.withIndex().maxByOrNull { it.value.value }
+                BarChart(
+                    s.daily, selectedDay, { selectedDay = it }, average = s.avgPerDay, labelEvery = 7,
+                    modifier = Modifier.semantics {
+                        contentDescription = "Daily spend chart. Average ${formatRupeesCompact(s.avgPerDay)} per day." +
+                            (peak?.let { " Highest on day ${it.index + 1}, ${formatRupeesCompact(it.value.value)}." } ?: "")
+                    },
+                )
             }
         }
 
@@ -272,11 +285,16 @@ private fun DashboardBody(
             val total = s.categories.sumOf { it.amount }
             SpendCard(Modifier.staggeredEntrance(3)) {
                 Text("Where it went", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(16.dp))
                 Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                     DonutChart(
                         slices = s.categories.map { DonutSlice(it.name, it.amount, it.color) },
                         selected = selectedCat,
+                        modifier = Modifier.semantics {
+                            contentDescription = "Spending by category. " + s.categories.take(4).joinToString(". ") {
+                                "${it.name} ${(it.amount / total * 100).roundToInt()} percent"
+                            }
+                        },
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             val sel = selectedCat?.let { s.categories.getOrNull(it) }
@@ -286,12 +304,12 @@ private fun DashboardBody(
                                 color = MaterialTheme.colorScheme.onSurface, decimals = MoneyDecimals.NONE, symbolScale = 0.6f,
                             )
                             if (sel != null) {
-                                Text("${(sel.amount / total * 100).roundToInt()}% of spend", style = MaterialTheme.typography.bodySmall, color = sel.color)
+                                Text("${(sel.amount / total * 100).roundToInt()}% of spend", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(16.dp))
                 val maxAmount = s.categories.maxOf { it.amount }
                 s.categories.forEachIndexed { i, c ->
                     CategoryRankRow(c, total, maxAmount, selected = selectedCat == i) {
@@ -309,10 +327,10 @@ private fun DashboardBody(
                     if (i > 0) HairlineDivider()
                     Row(
                         Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        Box(Modifier.size(40.dp).clip(CircleShape).background(m.color.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
-                            Text(m.name.first().uppercase(), style = MaterialTheme.typography.titleSmall, color = m.color)
+                        Box(Modifier.size(40.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
+                            Text(m.name.first().uppercase(), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Column(Modifier.weight(1f)) {
                             Text(m.name, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -362,7 +380,7 @@ private fun MonthHeader(monthStart: Long, canGoForward: Boolean, onPrev: () -> U
 @Composable
 private fun NavCircle(icon: ImageVector, desc: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(44.dp).clip(CircleShape)
+        Modifier.size(48.dp).clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .border(1.dp, MaterialTheme.spend.hairline, CircleShape)
             .pressable(enabled = enabled, haptic = true, onClick = onClick),
@@ -382,23 +400,20 @@ private fun HeroCard(s: MonthSummary, modifier: Modifier = Modifier) {
     )
     val isCurrent = startOfMonth(System.currentTimeMillis()) == s.monthStart
     SpendCard(modifier, brush = glow, contentPadding = 24.dp, shape = MaterialTheme.shapes.extraLarge) {
-        Text(
-            if (isCurrent) "My spend this month" else "My spend in ${formatMonth(s.monthStart).substringBefore(' ')}",
-            style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+        Overline(if (isCurrent) "My spend this month" else "My spend in ${formatMonth(s.monthStart).substringBefore(' ')}")
         Spacer(Modifier.height(4.dp))
         HeroMoney(s.mySpend)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(8.dp))
         DeltaLine(s)
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(24.dp))
         StackedShareBar(
             mine = s.mySpend, other = s.coveredByOthers,
             mineColor = MaterialTheme.colorScheme.primary, otherColor = MaterialTheme.spend.accent2,
         )
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             HeroStat("Paid out", s.paidOut, MaterialTheme.colorScheme.onSurface, Modifier.weight(1f))
-            HeroStat("Covered by others", s.coveredByOthers, MaterialTheme.spend.accent2, Modifier.weight(1f))
+            HeroStat("Covered", s.coveredByOthers, MaterialTheme.spend.accent2, Modifier.weight(1f))
             HeroStat("Income", s.income, MaterialTheme.spend.credit, Modifier.weight(1f))
         }
         if (s.transfers > 0) {
@@ -437,10 +452,8 @@ private fun HeroStat(label: String, amount: Double, color: Color, modifier: Modi
             amount, style = MaterialTheme.typography.titleMedium, color = color, animate = true,
             decimals = MoneyDecimals.NONE, symbolScale = 0.75f,
         )
-        Text(
-            label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1, overflow = TextOverflow.Ellipsis,
-        )
+        Spacer(Modifier.height(2.dp))
+        Overline(label)
     }
 }
 
@@ -474,11 +487,11 @@ private fun PendingCard(t: Transaction, onOpen: () -> Unit, onFullyMine: () -> U
 @Composable
 private fun CategoryRankRow(c: CategoryTotal, total: Double, maxAmount: Double, selected: Boolean, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().pressable(role = null, onClick = onClick).padding(vertical = 9.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Box(Modifier.size(10.dp).clip(CircleShape).background(c.color))
             Text(
                 c.name, style = MaterialTheme.typography.titleSmall,
-                color = if (selected) c.color else MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f),
+                color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f),
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             Text("${(c.amount / total * 100).roundToInt()}%", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -489,5 +502,14 @@ private fun CategoryRankRow(c: CategoryTotal, total: Double, maxAmount: Double, 
         }
         Spacer(Modifier.height(8.dp))
         RankBar((c.amount / maxAmount).toFloat(), c.color)
+    }
+}
+
+@Composable
+private fun DashboardSkeleton() {
+    Column(verticalArrangement = Arrangement.spacedBy(24.dp)) {
+        SkeletonBlock(Modifier.fillMaxWidth(), 260.dp, MaterialTheme.shapes.extraLarge)
+        SkeletonBlock(Modifier.fillMaxWidth(), 220.dp, MaterialTheme.shapes.large)
+        SkeletonBlock(Modifier.fillMaxWidth(), 160.dp, MaterialTheme.shapes.large)
     }
 }

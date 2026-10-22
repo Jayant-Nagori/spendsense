@@ -19,10 +19,9 @@ import com.jayant.spendsense.data.PaymentMode
 fun CategoryPicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
     FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SpendCategories.forEach { c ->
-            val color = categoryColor(c)
             SpendChip(
-                label = c, selected = selected == c, onClick = { onSelect(c) }, accent = color,
-                leading = { Icon(categoryIcon(c), null, tint = color, modifier = Modifier.size(16.dp)) },
+                label = c, selected = selected == c, onClick = { onSelect(c) },
+                leading = { Icon(categoryIcon(c), null, modifier = Modifier.size(16.dp)) },
             )
         }
     }

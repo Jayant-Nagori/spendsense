@@ -77,3 +77,10 @@ fun PaymentMode.label(): String = when (this) {
 val PaymentModePickerOrder = listOf(
     PaymentMode.CASH, PaymentMode.UPI, PaymentMode.CARD, PaymentMode.NETBANKING, PaymentMode.WALLET, PaymentMode.OTHER,
 )
+
+/** Validated categorical chart palette (dataviz skill, adjacent-pair CVD checked), assigned by rank in a chart. */
+private val ChartDark = listOf(0xFF3987E5, 0xFFD95926, 0xFF199E70, 0xFFC98500, 0xFFD55181, 0xFF9085E9, 0xFFE66767).map { Color(it) }
+private val ChartLight = listOf(0xFF2A78D6, 0xFFEB6834, 0xFF1BAF7A, 0xFFEDA100, 0xFFE87BA4, 0xFF6250D6, 0xFFE34948).map { Color(it) }
+val ChartOtherColor = Color(0xFF6B7185)
+
+fun chartColor(rank: Int, dark: Boolean): Color = (if (dark) ChartDark else ChartLight).getOrElse(rank) { ChartOtherColor }

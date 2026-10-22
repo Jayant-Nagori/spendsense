@@ -139,7 +139,7 @@ fun ManualEntrySheet(onDismiss: () -> Unit) {
             if (stored == null) {
                 duplicateWarning = true
             } else {
-                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                 sheetState.hide()
                 onDismiss()
             }
@@ -203,7 +203,7 @@ fun ManualEntrySheet(onDismiss: () -> Unit) {
                 CategoryPicker(category, { category = it })
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 DateTimeButton(formatDayHeader(whenMillis), "Change date", Modifier.weight(1f)) { showDate = true }
                 DateTimeButton(formatTime(whenMillis), "Change time", Modifier.weight(1f)) { showTime = true }
             }

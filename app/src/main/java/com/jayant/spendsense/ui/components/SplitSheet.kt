@@ -24,6 +24,7 @@ import kotlinx.coroutines.withContext
 fun SplitSheet(txn: Transaction, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -33,6 +34,7 @@ fun SplitSheet(txn: Transaction, onDismiss: () -> Unit) {
     ) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding()) {
             SplitContent(txn, saveLabel = "Save", onSave = { isSplit, share ->
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
                 scope.launch {
                     withContext(Dispatchers.IO) { TransactionRepository.get(context).setSplit(txn.id, isSplit, share) }
                     sheetState.hide()

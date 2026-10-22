@@ -63,7 +63,7 @@ import com.jayant.spendsense.ui.components.SpendChip
 import com.jayant.spendsense.ui.components.TransactionRow
 import com.jayant.spendsense.ui.components.PaymentModePickerOrder
 import com.jayant.spendsense.ui.components.addMonths
-import com.jayant.spendsense.ui.components.categoryColor
+import com.jayant.spendsense.ui.components.SkeletonRow
 import com.jayant.spendsense.ui.components.formatDayHeader
 import com.jayant.spendsense.ui.components.formatRupeesCompact
 import com.jayant.spendsense.ui.components.label
@@ -150,7 +150,7 @@ fun TransactionsScreen() {
             modifier = Modifier.fillMaxSize(),
         ) {
             item(key = "header") {
-                Column(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                     Column {
                         Text("Transactions", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurface)
                         Text(
@@ -186,7 +186,7 @@ fun TransactionsScreen() {
             }
 
             if (all == null) {
-                // loading: keep empty, the list appears in one beat
+                items(7) { Column(Modifier.padding(horizontal = 20.dp)) { SkeletonRow() } }
             } else if (filtered.isEmpty()) {
                 item(key = "empty") {
                     EmptyState(
@@ -273,7 +273,7 @@ private fun FilterBar(filters: Filters, onChange: (Filters) -> Unit, onCustomRan
             DropdownMenuItem(text = { Text("All categories") }, onClick = { onChange(filters.copy(category = null)); dismiss() })
             SpendCategories.forEach { c ->
                 DropdownMenuItem(
-                    text = { Text(c, color = categoryColor(c)) },
+                    text = { Text(c) },
                     onClick = { onChange(filters.copy(category = c)); dismiss() },
                 )
             }

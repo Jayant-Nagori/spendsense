@@ -59,6 +59,7 @@ import kotlinx.coroutines.withContext
 fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isDebit = txn.type == TxnType.DEBIT
 
@@ -88,7 +89,7 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
             Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 CategoryBadge(category, size = 52.dp)
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -147,7 +148,7 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
                     Text(if (showRaw) "Hide" else "Show", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                 }
                 if (showRaw) {
-                    Spacer(Modifier.height(10.dp))
+                    Spacer(Modifier.height(8.dp))
                     SelectionContainer {
                         Text(
                             txn.rawText.ifBlank { "No message stored for manual entries." },
@@ -159,6 +160,7 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
             }
 
             PrimaryButton("Save changes", enabled = !isDebit || split.isValid, modifier = Modifier.fillMaxWidth(), onClick = {
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
                 val repo = TransactionRepository.get(context)
                 close {
                     val fresh = repo.get(txn.id) ?: txn

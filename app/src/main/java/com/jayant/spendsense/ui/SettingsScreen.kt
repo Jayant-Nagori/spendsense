@@ -116,7 +116,7 @@ fun SettingsScreen() {
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp),
+        verticalArrangement = Arrangement.spacedBy(32.dp),
     ) {
         Column {
             Text("Settings", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurface)
@@ -155,11 +155,11 @@ fun SettingsScreen() {
                 "Pull older bank SMS into your history. These are added as already answered, so you won't be asked about them.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(3, 6, 12).forEach { m -> SpendChip("$m months", months == m, { months = m }) }
             }
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(16.dp))
             PrimaryButton(
                 if (importing) "Importing..." else "Import past SMS",
                 enabled = sms && !importing,
@@ -237,7 +237,7 @@ private fun Divider() {
 
 @Composable
 private fun PermissionRow(icon: ImageVector, title: String, body: String, granted: Boolean, action: String, onAction: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         val tint = if (granted) MaterialTheme.spend.credit else MaterialTheme.colorScheme.primary
         Box(Modifier.size(44.dp).clip(MaterialTheme.shapes.medium).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
             Icon(if (granted) Icons.Rounded.Check else icon, null, tint = tint)
@@ -282,7 +282,7 @@ private fun ApiKeyBlock(settings: Settings) {
         "Add an Anthropic API key to let the assistant answer open-ended questions. Without one it still answers from your data offline.",
         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
-    Spacer(Modifier.height(14.dp))
+    Spacer(Modifier.height(16.dp))
     if (!editing && saved.isNotEmpty()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Column(Modifier.weight(1f)) {

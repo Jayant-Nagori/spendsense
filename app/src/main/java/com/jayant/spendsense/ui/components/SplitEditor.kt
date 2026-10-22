@@ -96,7 +96,7 @@ fun rememberSplitState(total: Double, isSplit: Boolean = false, myShare: Double?
 @Composable
 fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
     val focus = remember { FocusRequester() }
-    Column(modifier.fillMaxWidth().animateContentSize(), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(modifier.fillMaxWidth().animateContentSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
             Modifier.fillMaxWidth().pressable(role = null) { state.fullyMine = !state.fullyMine; state.touched = true },
             verticalAlignment = Alignment.CenterVertically,
@@ -125,7 +125,7 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut(),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 OutlinedTextField(
                     value = state.shareText,
                     onValueChange = { v ->
@@ -152,7 +152,7 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
                         "Split with", style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     Stepper(Icons.Rounded.Remove, "Fewer people", enabled = state.people > 2) { state.applyPeople(if (state.people == 0) 2 else state.people - 1) }
                     Text(
                         if (state.people == 0) "–" else state.people.toString(),
@@ -160,7 +160,7 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
                         textAlign = TextAlign.Center, modifier = Modifier.width(34.dp),
                     )
                     Stepper(Icons.Rounded.Add, "More people", enabled = state.people < 20) { state.applyPeople(if (state.people == 0) 2 else state.people + 1) }
-                    Spacer(Modifier.width(10.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text("people", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Row(
@@ -183,7 +183,7 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
 @Composable
 private fun Stepper(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, enabled: Boolean, onClick: () -> Unit) {
     Box(
-        Modifier.size(40.dp).clip(CircleShape)
+        Modifier.size(48.dp).clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .border(1.dp, MaterialTheme.spend.hairline, CircleShape)
             .pressable(enabled = enabled, haptic = true, onClick = onClick),
@@ -211,10 +211,10 @@ fun SplitContent(
     saveLabel: String = "Save",
 ) {
     val state = rememberSplitState(txn.amount, txn.isSplit, txn.myShare, key = txn.id)
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(18.dp)) {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(splitHeadline(txn), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Column {
-            Text("Total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Overline("Total")
             MoneyText(txn.amount, style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onSurface, symbolScale = 0.5f)
         }
         SplitEditor(state)

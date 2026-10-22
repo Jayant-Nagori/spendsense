@@ -1,6 +1,24 @@
 package com.jayant.spendsense.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.ui.composed
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -81,7 +99,8 @@ fun Pill(text: String, container: Color, content: Color, modifier: Modifier = Mo
     }
 }
 
-/** Selectable chip: accent-filled when selected. 40dp tall for a comfortable hit area. */
+/** Selectable chip: accent-tinted when selected. 40dp visual inside a 48dp touch target. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SpendChip(
     label: String,
@@ -94,42 +113,75 @@ fun SpendChip(
     val bg by animateColorAsState(if (selected) accent.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainerHigh, label = "chipBg")
     val fg by animateColorAsState(if (selected) accent else MaterialTheme.colorScheme.onSurfaceVariant, label = "chipFg")
     val borderC by animateColorAsState(if (selected) accent.copy(alpha = 0.5f) else MaterialTheme.spend.hairline, label = "chipBorder")
-    Row(
+    Box(
         modifier
-            .heightIn(min = 40.dp)
-            .clip(CircleShape)
-            .background(bg)
-            .border(1.dp, borderC, CircleShape)
-            .pressable(haptic = false, onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .minimumInteractiveComponentSize()
+            .pressable(role = Role.Button, onClick = onClick)
+            .semantics { this.selected = selected },
+        contentAlignment = Alignment.Center,
     ) {
-        leading?.invoke()
-        Text(label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
+        Row(
+            Modifier
+                .heightIn(min = 40.dp)
+                .clip(CircleShape)
+                .background(bg)
+                .border(1.dp, borderC, CircleShape)
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            leading?.invoke()
+            Text(label, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
+        }
     }
 }
 
-/** Round tinted icon tile used for categories. Radius is concentric with its parent row (16dp tile). */
+/** Neutral icon tile for a category. Colour is reserved for charts and money semantics, so tiles stay quiet. */
 @Composable
 fun CategoryBadge(category: String, modifier: Modifier = Modifier, size: Dp = 44.dp) {
-    val c = categoryColor(category)
     Box(
-        modifier.size(size).clip(RoundedCornerShape(size * 0.34f)).background(c.copy(alpha = 0.14f)),
+        modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.34f))
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .border(1.dp, MaterialTheme.spend.hairline, RoundedCornerShape(size * 0.34f)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(categoryIcon(category), contentDescription = category, tint = c, modifier = Modifier.size(size * 0.5f))
+        Icon(categoryIcon(category), contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(size * 0.48f))
     }
+}
+
+/** Small letter-spaced label for stat captions and card eyebrows. Used sparingly. */
+@Composable
+fun Overline(text: String, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Text(
+        text.uppercase(),
+        modifier = modifier,
+        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.5.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.W700),
+        color = color,
+        maxLines = 1,
+    )
 }
 
 /** One transaction row, shared by dashboard and transactions list. */
 @Composable
 fun TransactionRow(txn: Transaction, onClick: () -> Unit, modifier: Modifier = Modifier, showDate: Boolean = false) {
     val isCredit = txn.type == TxnType.CREDIT
+    val spoken = buildString {
+        append(txn.counterparty?.takeIf { it.isNotBlank() } ?: if (isCredit) "Money received" else "Payment")
+        append(", ").append(formatRupees(txn.amount)).append(if (isCredit) " received" else " paid")
+        if (txn.isSplit && txn.myShare != null) append(", your share ").append(formatRupees(txn.effectiveAmount))
+        if (!isCredit) append(", ").append(txn.category)
+        append(", ").append(formatDateTime(txn.timestamp))
+        if (!isCredit && !txn.reviewed) append(", needs your answer")
+    }
     Row(
-        modifier.fillMaxWidth().pressable(role = null, onClick = onClick).padding(vertical = 10.dp),
+        modifier.fillMaxWidth().heightIn(min = 56.dp)
+            .pressable(role = Role.Button, onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = spoken }
+            .padding(vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (isCredit) {
             val green = MaterialTheme.spend.credit
@@ -173,14 +225,109 @@ fun HairlineDivider(modifier: Modifier = Modifier) {
     Spacer(modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.spend.hairline))
 }
 
+/** Drawn empty-state art: a torn receipt with a saffron coin. Pure Canvas, follows the theme. */
 @Composable
-fun EmptyState(title: String, body: String, modifier: Modifier = Modifier) {
-    Column(modifier.fillMaxWidth().padding(vertical = 40.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.height(6.dp))
-        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+fun ReceiptIllustration(modifier: Modifier = Modifier) {
+    val line = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    val paper = MaterialTheme.colorScheme.surfaceContainerHigh
+    val edge = MaterialTheme.spend.hairline.copy(alpha = 0.18f)
+    val accent = MaterialTheme.colorScheme.primary
+    val accent2 = MaterialTheme.spend.accent2
+    Canvas(modifier.size(width = 168.dp, height = 132.dp)) {
+        val w = size.width; val h = size.height
+        val rw = w * 0.52f; val rx = w * 0.14f; val top = h * 0.06f; val bottom = h * 0.94f
+        val tooth = rw / 7f
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(rx, top)
+            lineTo(rx + rw, top)
+            lineTo(rx + rw, bottom - tooth * 0.8f)
+            var x = rx + rw
+            var up = false
+            while (x > rx + 0.1f) {
+                x = (x - tooth / 2f).coerceAtLeast(rx)
+                lineTo(x, if (up) bottom - tooth * 0.8f else bottom)
+                up = !up
+            }
+            lineTo(rx, bottom - tooth * 0.8f)
+            close()
+        }
+        drawPath(path, paper)
+        drawPath(path, edge, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+        // text lines
+        val lx = rx + rw * 0.14f
+        val widths = listOf(0.62f, 0.44f, 0.7f, 0.36f)
+        widths.forEachIndexed { i, f ->
+            val y = top + h * (0.18f + i * 0.13f)
+            drawLine(line, Offset(lx, y), Offset(lx + rw * f, y), strokeWidth = 3.dp.toPx(), cap = StrokeCap.Round)
+        }
+        // dashed total rule
+        drawLine(
+            line.copy(alpha = 0.4f), Offset(lx, top + h * 0.72f), Offset(rx + rw * 0.86f, top + h * 0.72f),
+            strokeWidth = 1.5.dp.toPx(), pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f)),
+        )
+        // coin
+        val c = Offset(w * 0.7f, h * 0.58f); val r = h * 0.27f
+        drawCircle(accent.copy(alpha = 0.16f), r * 1.35f, c)
+        drawCircle(accent, r, c)
+        drawCircle(Color.Black.copy(alpha = 0.18f), r * 0.78f, c, style = androidx.compose.ui.graphics.drawscope.Stroke(1.5.dp.toPx()))
+        val g = androidx.compose.ui.graphics.Path().apply {
+            moveTo(c.x - r * 0.32f, c.y - r * 0.38f); lineTo(c.x + r * 0.34f, c.y - r * 0.38f)
+            moveTo(c.x - r * 0.32f, c.y - r * 0.12f); lineTo(c.x + r * 0.34f, c.y - r * 0.12f)
+            moveTo(c.x - r * 0.22f, c.y - r * 0.38f)
+            cubicTo(c.x + r * 0.5f, c.y - r * 0.38f, c.x + r * 0.5f, c.y + r * 0.26f, c.x - r * 0.22f, c.y + r * 0.26f)
+            lineTo(c.x + r * 0.28f, c.y + r * 0.62f)
+        }
+        drawPath(g, Color(0xFF1B1200), style = androidx.compose.ui.graphics.drawscope.Stroke(2.6.dp.toPx(), cap = StrokeCap.Round, join = androidx.compose.ui.graphics.StrokeJoin.Round))
+        // spark
+        drawCircle(accent2, 3.dp.toPx(), Offset(w * 0.9f, h * 0.18f))
+        drawCircle(accent2.copy(alpha = 0.5f), 2.dp.toPx(), Offset(w * 0.08f, h * 0.7f))
     }
 }
 
-@Suppress("unused")
-private val keep = Pair(Modifier.animateContentSize(), Modifier.width(0.dp))
+@Composable
+fun EmptyState(title: String, body: String, modifier: Modifier = Modifier, illustration: Boolean = true) {
+    Column(modifier.fillMaxWidth().padding(vertical = 32.dp), horizontalAlignment = Alignment.Start) {
+        if (illustration) {
+            ReceiptIllustration()
+            Spacer(Modifier.height(24.dp))
+        }
+        Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+        Spacer(Modifier.height(8.dp))
+        Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+/** Soft moving highlight for loading skeletons. Honors the system animation scale. */
+fun Modifier.shimmer(): Modifier = composed {
+    val t = rememberInfiniteTransition(label = "shimmer")
+    val x by t.animateFloat(-1f, 2f, infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "shimmerX")
+    val base = MaterialTheme.colorScheme.surfaceContainerHigh
+    val hi = MaterialTheme.colorScheme.surfaceContainerHighest
+    drawWithCache {
+        val w = size.width
+        val brush = Brush.linearGradient(
+            colors = listOf(base, hi, base),
+            start = Offset(w * x, 0f), end = Offset(w * (x + 0.6f), size.height),
+        )
+        onDrawBehind { drawRect(brush) }
+    }
+}
+
+@Composable
+fun SkeletonBlock(modifier: Modifier = Modifier, height: Dp = 16.dp, shape: Shape = RoundedCornerShape(8.dp)) {
+    Box(modifier.height(height).clip(shape).shimmer())
+}
+
+/** Row-shaped placeholder matching [TransactionRow] proportions. */
+@Composable
+fun SkeletonRow(modifier: Modifier = Modifier) {
+    Row(modifier.fillMaxWidth().padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        SkeletonBlock(Modifier.size(44.dp), 44.dp, RoundedCornerShape(15.dp))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SkeletonBlock(Modifier.fillMaxWidth(0.55f), 14.dp)
+            SkeletonBlock(Modifier.fillMaxWidth(0.35f), 10.dp)
+        }
+        SkeletonBlock(Modifier.size(width = 56.dp, height = 14.dp), 14.dp)
+    }
+}
+
