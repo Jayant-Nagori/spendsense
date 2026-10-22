@@ -2,6 +2,7 @@ package com.jayant.spendsense.ingest
 
 import android.content.Context
 import com.jayant.spendsense.data.ParsedTransaction
+import com.jayant.spendsense.data.PaymentMode
 import com.jayant.spendsense.data.Settings
 import com.jayant.spendsense.data.Transaction
 import com.jayant.spendsense.data.TransactionRepository
@@ -36,10 +37,12 @@ object TransactionIngestor {
             rawText = rawText,
             timestamp = parsed.timestamp,
             category = CategoryGuesser.guess(parsed.counterparty, rawText),
-            reviewed = !live || parsed.type == TxnType.CREDIT,
+            paymentMode = parsed.paymentMode,
+            // Credits and ATM withdrawals never need a split answer (cash spends are logged manually).
+            reviewed = !live || parsed.type == TxnType.CREDIT || parsed.paymentMode == PaymentMode.CASH,
         )
         val stored = TransactionRepository.get(context).insertIfNew(txn) ?: return null
-        if (live && stored.type == TxnType.DEBIT && Settings(context).askSplitAfterPayment) {
+        if (live && !stored.reviewed && stored.type == TxnType.DEBIT && Settings(context).askSplitAfterPayment) {
             SplitPromptNotifier.notifyNewDebit(context, stored)
         }
         return stored

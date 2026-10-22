@@ -43,10 +43,12 @@ import com.jayant.spendsense.data.Settings
 /** Call in every Activity.onCreate before setContent: FLAG_SECURE etc. */
 object SecureWindow {
     fun apply(activity: FragmentActivity) {
-        // No screenshots, screen recording or recents thumbnails.
-        activity.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            activity.setRecentsScreenshotEnabled(false)
+        // No screenshots, screen recording or recents thumbnails. Debug builds allow them for visual QA only.
+        if (!com.jayant.spendsense.BuildConfig.DEBUG) {
+            activity.window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.setRecentsScreenshotEnabled(false)
+            }
         }
         LockState.ensureInit(activity.application)
     }

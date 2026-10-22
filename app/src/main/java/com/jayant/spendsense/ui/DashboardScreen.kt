@@ -216,7 +216,7 @@ fun DashboardScreen(onSeeAllTransactions: () -> Unit = {}) {
     }
 
     detail?.let { TransactionDetailSheet(it, onDismiss = { detail = null }) }
-    splitFor?.let { SplitSheet(it, onDismiss = { splitFor = null }) }
+    splitFor?.let { SplitSheet(it, onDismiss = { splitFor = null }, startAsSplit = true) }
 }
 
 @Composable

@@ -171,6 +171,8 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
                     Text("Others owe you", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
                     if (state.isValid) {
                         MoneyText(state.othersOwe, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.spend.credit, animate = true, decimals = MoneyDecimals.AUTO)
+                    } else if (state.share == null) {
+                        Text("Enter your share", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         Text("Share can't exceed total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     }
@@ -209,8 +211,9 @@ fun SplitContent(
     onSave: (isSplit: Boolean, myShare: Double?) -> Unit,
     modifier: Modifier = Modifier,
     saveLabel: String = "Save",
+    startAsSplit: Boolean = false,
 ) {
-    val state = rememberSplitState(txn.amount, txn.isSplit, txn.myShare, key = txn.id)
+    val state = rememberSplitState(txn.amount, txn.isSplit || (startAsSplit && !txn.reviewed), txn.myShare, key = txn.id)
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(splitHeadline(txn), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Column {

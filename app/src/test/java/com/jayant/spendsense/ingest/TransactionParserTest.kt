@@ -206,7 +206,7 @@ class TransactionParserTest {
 
     @Test fun samsungWallet() {
         val p = notif("com.samsung.android.spay", "Payment complete", "Paid ₹899 at DECATHLON with Axis Bank card")
-        assertNotNull(p); assertEquals(PaymentMode.CARD, p!!.paymentMode); assertEquals("DECATHLON", p.counterparty)
+        assertNotNull(p); assertEquals(PaymentMode.CARD, p!!.paymentMode); assertEquals("Decathlon", p.counterparty)
     }
 
     @Test fun ignoresNonPaymentApp() = assertNull(notif("com.whatsapp", "Rahul", "paid ₹500 to me yesterday lol"))

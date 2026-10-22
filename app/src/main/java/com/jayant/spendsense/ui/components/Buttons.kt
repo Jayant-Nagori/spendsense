@@ -63,10 +63,10 @@ fun GhostButton(
             .border(BorderStroke(1.dp, MaterialTheme.spend.hairline.copy(alpha = 0.16f)), ButtonShape)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh)
             .pressable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 22.dp),
+            .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
-        Text(text, style = MaterialTheme.typography.titleSmall, color = color)
+        Text(text, style = MaterialTheme.typography.titleSmall, color = color, maxLines = 1, softWrap = false)
     }
 }

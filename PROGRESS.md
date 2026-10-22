@@ -14,8 +14,8 @@ on branches agent/<name>. Merge with `git -c commit.gpgsign=false merge --no-edi
 - [x] security merged
 - [x] ai merged
 - [x] portfolio v1 merged (polish pass running — merge again when it lands)
-- [ ] ingest (SMS/UPI/card parser) — merge
-- [ ] ui (theme, dashboard, transactions, split, settings) — merge; wire launcher icon in manifest
-- [ ] full build + all unit tests on main
-- [ ] emulator (Pixel_9_Pro) visual QA: screenshot every screen, design polish pass on everything (incl. AI chat)
+- [x] ingest (written by orchestrator) (SMS/UPI/card parser) — merge
+- [x] ui (theme, dashboard, transactions, split, settings) — merge; wire launcher icon in manifest
+- [x] full build + all unit tests on main
+- [x] emulator (Pixel_9_Pro) visual QA: screenshot every screen, design polish pass on everything (incl. AI chat)
 - [ ] build APK, serve over LAN + QR, tell user

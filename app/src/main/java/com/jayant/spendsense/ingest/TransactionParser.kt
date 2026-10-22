@@ -272,7 +272,16 @@ object TransactionParser {
 
     private fun cleanName(raw: String): String? {
         val s = raw.trim().trim('.', ',', '-', ':', ';', '*', '/').replace(Regex("\\s+"), " ")
-        return s.takeIf { it.length >= 2 }
+        return s.takeIf { it.length >= 2 }?.let(::prettify)
+    }
+
+    /** "AMAZON PAY IN" -> "Amazon Pay In"; mixed-case names and short acronyms are left alone. */
+    private fun prettify(s: String): String {
+        if (s.any(Char::isLowerCase)) return s
+        return s.split(' ').joinToString(" ") { w ->
+            if (w.length <= 3 && w.all(Char::isLetter) && w in setOf("ATM", "POS", "UPI", "LIC", "KFC", "PVR", "HDFC", "SBI", "BSNL")) w
+            else w.lowercase().replaceFirstChar { it.titlecase() }
+        }
     }
 
     private val NOISE = Regex(

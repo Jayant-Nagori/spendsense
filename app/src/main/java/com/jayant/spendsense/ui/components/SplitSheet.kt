@@ -21,7 +21,7 @@ import kotlinx.coroutines.withContext
 /** Bottom sheet that asks "was it all yours?" for one transaction and persists via TransactionRepository.setSplit. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SplitSheet(txn: Transaction, onDismiss: () -> Unit) {
+fun SplitSheet(txn: Transaction, onDismiss: () -> Unit, startAsSplit: Boolean = false) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
@@ -33,7 +33,7 @@ fun SplitSheet(txn: Transaction, onDismiss: () -> Unit) {
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding()) {
-            SplitContent(txn, saveLabel = "Save", onSave = { isSplit, share ->
+            SplitContent(txn, saveLabel = "Save", startAsSplit = startAsSplit, onSave = { isSplit, share ->
                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
                 scope.launch {
                     withContext(Dispatchers.IO) { TransactionRepository.get(context).setSplit(txn.id, isSplit, share) }
