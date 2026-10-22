@@ -48,11 +48,12 @@ fun SpendCard(
     shape: Shape = MaterialTheme.shapes.large,
     color: Color = MaterialTheme.colorScheme.surfaceContainer,
     contentPadding: Dp = 20.dp,
+    brush: Brush? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val m = modifier
         .clip(shape)
-        .background(color)
+        .let { if (brush != null) it.background(brush) else it.background(color) }
         .border(BorderStroke(1.dp, MaterialTheme.spend.hairline), shape)
         .let { if (onClick != null) it.pressable(onClick = onClick, role = null) else it }
     Column(m.padding(contentPadding), content = content)
