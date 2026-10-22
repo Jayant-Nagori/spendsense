@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Rupee glyph drawn as strokes, inside the 66dp adaptive-icon safe zone. -->
+    <path
+        android:fillColor="#00000000" android:strokeColor="#FFFFB547" android:strokeWidth="5.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M39,34 H69 M39,46 H69 M44,34 C68,34 68,58 44,58 L66,78" />
+    <!-- one small orchid spark: the "sense" -->
+    <path android:fillColor="#FFB3A6FF"
+        android:pathData="M72,26 L74,31 L79,33 L74,35 L72,40 L70,35 L65,33 L70,31 Z" />
+</vector>
