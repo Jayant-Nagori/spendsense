@@ -18,4 +18,5 @@ on branches agent/<name>. Merge with `git -c commit.gpgsign=false merge --no-edi
 - [x] ui (theme, dashboard, transactions, split, settings) — merge; wire launcher icon in manifest
 - [x] full build + all unit tests on main
 - [x] emulator (Pixel_9_Pro) visual QA: screenshot every screen, design polish pass on everything (incl. AI chat)
-- [ ] build APK, serve over LAN + QR, tell user
+- [x] build APK, serve over LAN + QR, tell user
+Serving: http://192.168.1.103:8765/SpendSense.apk (sha256 16fe1524…9207). Remaining: user installs; optional polish.
