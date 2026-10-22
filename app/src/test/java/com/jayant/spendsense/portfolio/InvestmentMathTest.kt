@@ -170,4 +170,25 @@ class InvestmentMathTest {
         assertTrue(isPaymentTracked(c, listOf(fromTxn)))
         assertFalse(isPaymentTracked(a, listOf(fromTxn)))
     }
+
+    @Test fun sipTotalAndTenure() {
+        val list = listOf(
+            Investment(1, "a", AssetType.MUTUAL_FUND, null, 1.0, isSip = true, sipAmount = 5000.0),
+            Investment(2, "b", AssetType.MUTUAL_FUND, null, 1.0, isSip = true, sipAmount = null),
+            Investment(3, "c", AssetType.STOCK, null, 1.0, isSip = false, sipAmount = 999.0),
+        )
+        assertEquals(5000.0, monthlySipTotal(list), 0.0)
+        assertEquals(0.5f, tenureProgress(0L, 100L, 50L)!!, 1e-6f)
+        assertEquals(1f, tenureProgress(0L, 100L, 500L)!!, 0f)
+        assertEquals(0f, tenureProgress(10L, 100L, 5L)!!, 0f)
+        assertNull(tenureProgress(null, 100L, 5L))
+        assertNull(tenureProgress(100L, 100L, 5L))
+    }
+
+    @Test fun maturityShortLabels() {
+        assertEquals("Matured", maturityShort(-3))
+        assertEquals("Today", maturityShort(0))
+        assertEquals("45 days", maturityShort(45))
+        assertEquals("6 months", maturityShort(183))
+    }
 }

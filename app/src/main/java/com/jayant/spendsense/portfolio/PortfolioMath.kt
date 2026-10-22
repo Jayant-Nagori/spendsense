@@ -122,3 +122,13 @@ fun prefillFromPayment(p: PaymentInfo, recurring: Boolean, dateLabel: String): I
         notes = "Added from payment to $payee on $dateLabel · $TXN_MARKER${p.id}",
     )
 }
+
+/** Sum of monthly SIP amounts across holdings flagged as SIPs. */
+fun monthlySipTotal(list: List<Investment>): Double =
+    list.filter { it.isSip }.sumOf { it.sipAmount ?: 0.0 }
+
+/** Fraction of the tenure elapsed (0..1), or null when start/maturity are unknown. */
+fun tenureProgress(startMs: Long?, maturityMs: Long?, nowMs: Long): Float? {
+    if (startMs == null || maturityMs == null || maturityMs <= startMs) return null
+    return ((nowMs - startMs).toDouble() / (maturityMs - startMs)).coerceIn(0.0, 1.0).toFloat()
+}

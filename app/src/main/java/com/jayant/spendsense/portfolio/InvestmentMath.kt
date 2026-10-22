@@ -116,6 +116,16 @@ fun maturityLabel(days: Long): String = when {
     else -> "Matures in ${"%.1f".format(Locale.ENGLISH, days / DAYS_PER_YEAR)} years"
 }
 
+/** Short form for big type: "Today", "45 days", "6 months", "2.1 years", "Matured". */
+fun maturityShort(days: Long): String = when {
+    days < 0 -> "Matured"
+    days == 0L -> "Today"
+    days == 1L -> "Tomorrow"
+    days < 60 -> "$days days"
+    days < 730 -> "${(days / DAYS_PER_MONTH).roundToInt()} months"
+    else -> "${"%.1f".format(Locale.ENGLISH, days / DAYS_PER_YEAR)} years"
+}
+
 fun formatDate(ms: Long, zone: ZoneId = ZoneId.systemDefault()): String =
     DateTimeFormatter.ofPattern("d MMM yyyy", Locale.ENGLISH).format(Instant.ofEpochMilli(ms).atZone(zone))
 
