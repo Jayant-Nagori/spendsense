@@ -132,35 +132,35 @@ object QueryParser {
     private fun monthOf(token: String) = MONTHS.getValue(token.take(3))
 
     private fun extractDate(sb: StringBuilder, today: LocalDate): DateRange? {
-        isoDate.find(sb)?.let { m ->
+        isoDate.find(sb.toString())?.let { m ->
             val d = safeDate(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toInt())
             if (d != null) { sb.blank(m.range); return day(d) }
         }
-        numericDate.find(sb)?.let { m ->
+        numericDate.find(sb.toString())?.let { m ->
             val dd = m.groupValues[1].toInt()
             val mm = m.groupValues[2].toInt()
             val y = m.groupValues[3]
             val d = if (y.isNotEmpty()) safeDate(fullYear(y.toInt()), mm, dd) else inferYear(mm, dd, today)
             if (d != null) { sb.blank(m.range); return day(d) }
         }
-        dayMonth.find(sb)?.let { m ->
+        dayMonth.find(sb.toString())?.let { m ->
             val dd = m.groupValues[1].toInt()
             val mm = monthOf(m.groupValues[2])
             val y = m.groupValues[3]
             val d = if (y.isNotEmpty()) safeDate(y.toInt(), mm, dd) else inferYear(mm, dd, today)
             if (d != null) { sb.blank(m.range); return day(d) }
         }
-        monthDay.find(sb)?.let { m ->
+        monthDay.find(sb.toString())?.let { m ->
             val mm = monthOf(m.groupValues[1])
             val dd = m.groupValues[2].toInt()
             val y = m.groupValues[3]
             val d = if (y.isNotEmpty()) safeDate(y.toInt(), mm, dd) else inferYear(mm, dd, today)
             if (d != null) { sb.blank(m.range); return day(d) }
         }
-        dayBeforeYesterday.find(sb)?.let { m -> sb.blank(m.range); return day(today.minusDays(2), "day before yesterday") }
-        yesterday.find(sb)?.let { m -> sb.blank(m.range); return day(today.minusDays(1), "yesterday") }
-        this.today.find(sb)?.let { m -> sb.blank(m.range); return day(today, "today") }
-        lastN.find(sb)?.let { m ->
+        dayBeforeYesterday.find(sb.toString())?.let { m -> sb.blank(m.range); return day(today.minusDays(2), "day before yesterday") }
+        yesterday.find(sb.toString())?.let { m -> sb.blank(m.range); return day(today.minusDays(1), "yesterday") }
+        this.today.find(sb.toString())?.let { m -> sb.blank(m.range); return day(today, "today") }
+        lastN.find(sb.toString())?.let { m ->
             val n = m.groupValues[1].toLong()
             val from = when (m.groupValues[2]) {
                 "day" -> today.minusDays(n - 1)
@@ -170,7 +170,7 @@ object QueryParser {
             sb.blank(m.range)
             return DateRange(from, today.plusDays(1), "the last $n ${m.groupValues[2]}${if (n == 1L) "" else "s"}")
         }
-        weekday.find(sb)?.let { m ->
+        weekday.find(sb.toString())?.let { m ->
             val target = DayOfWeek.valueOf(m.groupValues[2].uppercase(Locale.ENGLISH))
             var d = today
             if (m.groupValues[1] == "last" || d.dayOfWeek != target) {
@@ -181,7 +181,7 @@ object QueryParser {
             val name = target.getDisplayName(TextStyle.FULL, Locale.ENGLISH)
             return day(d, "$name, ${pretty(d)}")
         }
-        periodRe.find(sb)?.let { m ->
+        periodRe.find(sb.toString())?.let { m ->
             val last = m.groupValues[1] == "last" || m.groupValues[1] == "previous"
             sb.blank(m.range)
             return when (m.groupValues[2]) {
@@ -202,12 +202,12 @@ object QueryParser {
                 }
             }
         }
-        yearOnly.find(sb)?.let { m ->
+        yearOnly.find(sb.toString())?.let { m ->
             val y = m.groupValues[1].toInt()
             sb.blank(m.range)
             return DateRange(LocalDate.of(y, 1, 1), LocalDate.of(y + 1, 1, 1), "$y")
         }
-        monthOnly.find(sb)?.let { m ->
+        monthOnly.find(sb.toString())?.let { m ->
             val qualifier = m.groupValues[1]
             val token = m.groupValues[2]
             // "may" is also a verb: only treat it as a month when clearly used as one.

@@ -30,7 +30,7 @@ class AssistantViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = Settings(app)
     private val data = RepoAssistantData(app)
     private val assistant = Assistant(
-        engine = AssistantEngine(AnthropicApi { settings.anthropicApiKey }, AssistantTools(data)),
+        engine = AssistantEngine(AnthropicApi(keyProvider = { settings.anthropicApiKey }), AssistantTools(data)),
         local = LocalAnswerer(data),
         hasKey = { settings.anthropicApiKey.isNotBlank() },
     )
