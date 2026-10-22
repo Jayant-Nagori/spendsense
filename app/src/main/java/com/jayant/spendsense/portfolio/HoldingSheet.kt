@@ -7,6 +7,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,6 +41,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -58,6 +69,62 @@ import androidx.compose.ui.unit.dp
 import com.jayant.spendsense.data.AssetType
 import com.jayant.spendsense.data.Investment
 
+
+/** Rounded, filled text field in the sheet's quiet style: no heavy outline until focused. */
+@Composable
+private fun SheetField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    label: @Composable (() -> Unit)? = null,
+    placeholder: @Composable (() -> Unit)? = null,
+    prefix: @Composable (() -> Unit)? = null,
+    suffix: @Composable (() -> Unit)? = null,
+    trailingIcon: @Composable (() -> Unit)? = null,
+    supportingText: @Composable (() -> Unit)? = null,
+    singleLine: Boolean = false,
+    readOnly: Boolean = false,
+    isError: Boolean = false,
+    minLines: Int = 1,
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+) {
+    val c = MaterialTheme.colorScheme
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = modifier,
+        label = label,
+        placeholder = placeholder,
+        prefix = prefix,
+        suffix = suffix,
+        trailingIcon = trailingIcon,
+        supportingText = supportingText,
+        singleLine = singleLine,
+        readOnly = readOnly,
+        isError = isError,
+        minLines = minLines,
+        maxLines = maxLines,
+        keyboardOptions = keyboardOptions,
+        shape = MaterialTheme.shapes.medium,
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = c.surfaceContainerHigh,
+            unfocusedContainerColor = c.surfaceContainerHigh,
+            errorContainerColor = c.surfaceContainerHigh,
+            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
+            focusedBorderColor = c.primary,
+            errorBorderColor = c.error,
+            focusedLabelColor = c.primary,
+            cursorColor = c.primary,
+        ),
+    )
+}
+
+@Composable
+private fun SheetLabel(text: String) {
+    SectionLabel(text, Modifier.padding(top = 10.dp))
+}
+
 private val AMOUNT_KEYS = KeyboardOptions(keyboardType = KeyboardType.Decimal)
 
 /** Add (id == 0) or edit a holding. [onSave] receives a validated Investment. */
@@ -75,6 +142,7 @@ fun HoldingSheet(
     var confirmDelete by remember { mutableStateOf(false) }
     val isEdit = initial != null && initial.id != 0L
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val haptics = LocalHapticFeedback.current
 
     fun change(block: (HoldingForm) -> HoldingForm, clear: FormField? = null) {
         form = block(form)
@@ -101,19 +169,37 @@ fun HoldingSheet(
                 fontWeight = FontWeight.SemiBold,
             )
 
-            Text("Type", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            SheetLabel("What is it")
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 AssetType.values().forEach { t ->
+                    val chipSource = remember { MutableInteractionSource() }
                     FilterChip(
                         selected = form.type == t,
-                        onClick = { change({ it.copy(type = t) }) },
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
+                            change({ it.copy(type = t) })
+                        },
                         label = { Text(t.label) },
                         leadingIcon = { Icon(assetIcon(t), null, Modifier.size(18.dp)) },
+                        interactionSource = chipSource,
+                        shape = CircleShape,
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
+                            selectedLabelColor = MaterialTheme.colorScheme.primary,
+                            selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
+                        ),
+                        border = FilterChipDefaults.filterChipBorder(
+                            enabled = true,
+                            selected = form.type == t,
+                            borderColor = MaterialTheme.colorScheme.outlineVariant,
+                            selectedBorderColor = MaterialTheme.colorScheme.primary,
+                        ),
+                        modifier = Modifier.pressScale(chipSource, 0.95f),
                     )
                 }
             }
 
-            OutlinedTextField(
+            SheetField(
                 value = form.name,
                 onValueChange = { v -> change({ it.copy(name = v) }, FormField.NAME) },
                 label = { Text("Name") },
@@ -123,7 +209,7 @@ fun HoldingSheet(
                 supportingText = errors[FormField.NAME]?.let { { Text(it) } },
                 modifier = Modifier.fillMaxWidth(),
             )
-            OutlinedTextField(
+            SheetField(
                 value = form.platform,
                 onValueChange = { v -> change({ it.copy(platform = v) }) },
                 label = { Text("Platform / bank (optional)") },
@@ -131,8 +217,9 @@ fun HoldingSheet(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+            SheetLabel("Amounts")
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
+                SheetField(
                     value = form.invested,
                     onValueChange = { v -> change({ it.copy(invested = v) }, FormField.INVESTED) },
                     label = { Text("Invested") },
@@ -143,7 +230,7 @@ fun HoldingSheet(
                     supportingText = errors[FormField.INVESTED]?.let { { Text(it) } },
                     modifier = Modifier.weight(1f),
                 )
-                OutlinedTextField(
+                SheetField(
                     value = form.current,
                     onValueChange = { v -> change({ it.copy(current = v) }, FormField.CURRENT) },
                     label = { Text("Current value") },
@@ -156,7 +243,7 @@ fun HoldingSheet(
                     modifier = Modifier.weight(1f),
                 )
             }
-            OutlinedTextField(
+            SheetField(
                 value = form.units,
                 onValueChange = { v -> change({ it.copy(units = v) }, FormField.UNITS) },
                 label = { Text("Units / quantity (optional)") },
@@ -167,6 +254,7 @@ fun HoldingSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
+            SheetLabel("Dates and interest")
             DateField("Start date", form.startDate, Modifier.fillMaxWidth(),
                 onChange = { d -> change({ it.copy(startDate = d) }, FormField.DATES) })
 
@@ -180,7 +268,7 @@ fun HoldingSheet(
                         DateField("Maturity date", form.maturityDate, Modifier.fillMaxWidth(),
                             error = errors[FormField.DATES],
                             onChange = { d -> change({ it.copy(maturityDate = d) }, FormField.DATES) })
-                        OutlinedTextField(
+                        SheetField(
                             value = form.rate,
                             onValueChange = { v -> change({ it.copy(rate = v) }, FormField.RATE) },
                             label = { Text("Interest rate") },
@@ -204,6 +292,7 @@ fun HoldingSheet(
                 }
             }
 
+            SheetLabel("Recurring")
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text("SIP / recurring investment", style = MaterialTheme.typography.titleSmall)
@@ -213,10 +302,20 @@ fun HoldingSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                Switch(checked = form.isSip, onCheckedChange = { v -> change({ it.copy(isSip = v) }, FormField.SIP) })
+                Switch(
+                    checked = form.isSip,
+                    onCheckedChange = { v ->
+                        haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                        change({ it.copy(isSip = v) }, FormField.SIP)
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                )
             }
             AnimatedVisibility(visible = form.isSip, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
-                OutlinedTextField(
+                SheetField(
                     value = form.sipAmount,
                     onValueChange = { v -> change({ it.copy(sipAmount = v) }, FormField.SIP) },
                     label = { Text("SIP amount") },
@@ -230,7 +329,8 @@ fun HoldingSheet(
                 )
             }
 
-            OutlinedTextField(
+            SheetLabel("Notes")
+            SheetField(
                 value = form.notes,
                 onValueChange = { v -> change({ it.copy(notes = v) }) },
                 label = { Text("Notes (optional)") },
@@ -239,25 +339,28 @@ fun HoldingSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Button(
+            PrimaryButton(
+                text = if (isEdit) "Save changes" else "Add holding",
                 onClick = {
                     when (val r = form.validate(System.currentTimeMillis())) {
                         is FormResult.Valid -> onSave(r.investment)
-                        is FormResult.Invalid -> errors = r.errors
+                        is FormResult.Invalid -> {
+                            haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                            errors = r.errors
+                        }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) { Text(if (isEdit) "Save changes" else "Add holding", fontWeight = FontWeight.SemiBold) }
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            )
 
             if (isEdit && onDelete != null) {
-                OutlinedButton(
+                QuietButton(
+                    text = "Delete holding",
                     onClick = { confirmDelete = true },
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Icon(Icons.Rounded.Delete, null, Modifier.size(18.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Delete holding", color = MaterialTheme.colorScheme.error)
-                }
+                    icon = Icons.Rounded.Delete,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                )
             }
             Spacer(Modifier.height(16.dp))
         }
@@ -290,7 +393,7 @@ private fun DateField(
 ) {
     var open by rememberSaveable { mutableStateOf(false) }
     Box(modifier) {
-        OutlinedTextField(
+        SheetField(
             value = millis?.let { formatDate(it) }.orEmpty(),
             onValueChange = {},
             readOnly = true,
@@ -340,6 +443,7 @@ fun UpdateValueSheet(
 ) {
     var text by remember { mutableStateOf(plainNumber(holding.valueNow)) }
     var error by remember { mutableStateOf<String?>(null) }
+    val haptics = LocalHapticFeedback.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -356,7 +460,7 @@ fun UpdateValueSheet(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            OutlinedTextField(
+            SheetField(
                 value = text,
                 onValueChange = { text = it; error = null },
                 label = { Text("Current value") },
@@ -367,13 +471,17 @@ fun UpdateValueSheet(
                 supportingText = error?.let { { Text(it) } },
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(
+            PrimaryButton(
+                text = "Update",
                 onClick = {
                     val (v, e) = validateNewValue(text)
-                    if (v != null) onSave(v) else error = e
+                    if (v != null) onSave(v) else {
+                        haptics.performHapticFeedback(HapticFeedbackType.Reject)
+                        error = e
+                    }
                 },
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-            ) { Text("Update", fontWeight = FontWeight.SemiBold) }
+                modifier = Modifier.fillMaxWidth(),
+            )
             Spacer(Modifier.height(16.dp))
         }
     }
