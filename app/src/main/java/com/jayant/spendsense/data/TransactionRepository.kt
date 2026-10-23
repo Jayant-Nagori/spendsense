@@ -67,6 +67,67 @@ class TransactionRepository private constructor(context: Context) {
         update(t.copy(isSplit = isSplit, myShare = if (isSplit) myShare else null, reviewed = true))
     }
 
+    // ---- refunds -------------------------------------------------------------------------------
+
+    /** User says they returned (part of) this purchase. [amount] defaults to the full amount. */
+    fun markReturned(id: Long, amount: Double? = null) {
+        val t = get(id) ?: return
+        if (t.type != TxnType.DEBIT || t.refundStatus == RefundStatus.RECEIVED) return
+        update(t.copy(refundStatus = RefundStatus.EXPECTED, refundAmount = (amount ?: t.amount).coerceIn(0.01, t.amount)))
+    }
+
+    /** Undo "I returned this" (only while the refund has not arrived). */
+    fun cancelReturn(id: Long) {
+        val t = get(id) ?: return
+        if (t.refundStatus != RefundStatus.EXPECTED) return
+        update(t.copy(refundStatus = RefundStatus.NONE, refundAmount = null))
+    }
+
+    /** Debits waiting for a refund, newest first. */
+    fun refundsExpected(): List<Transaction> =
+        query("refund_status = ? AND type = ?", arrayOf(RefundStatus.EXPECTED.name, TxnType.DEBIT.name))
+
+    /** Links a refund credit to its purchase and marks the purchase refunded (adds up partial refunds). */
+    fun linkRefund(creditId: Long, debitId: Long) {
+        val credit = get(creditId) ?: return
+        val debit = get(debitId) ?: return
+        update(credit.copy(refundOfId = debit.id, category = "Refund", reviewed = true))
+        val already = if (debit.refundStatus == RefundStatus.RECEIVED) debit.refundAmount ?: 0.0 else 0.0
+        update(debit.copy(refundStatus = RefundStatus.RECEIVED, refundAmount = (already + credit.amount).coerceAtMost(debit.amount)))
+    }
+
+    /** Detaches a refund credit from its purchase (e.g. wrong auto-match). */
+    fun unlinkRefund(creditId: Long) {
+        val credit = get(creditId) ?: return
+        val debitId = credit.refundOfId ?: return
+        update(credit.copy(refundOfId = null, category = "Other"))
+        get(debitId)?.let { update(it.copy(refundStatus = RefundStatus.NONE, refundAmount = null)) }
+    }
+
+    /**
+     * Best purchase for an incoming refund credit: within 60 days before it, not yet refunded, amount >= the credit.
+     * Prefers EXPECTED returns, then a matching counterparty, then the exact amount, then the most recent.
+     */
+    fun findRefundTarget(credit: Transaction): Transaction? {
+        val from = credit.timestamp - 60L * 24 * 60 * 60 * 1000
+        val candidates = query(
+            "type = ? AND timestamp >= ? AND timestamp <= ? AND amount >= ? AND refund_status != ?",
+            arrayOf(TxnType.DEBIT.name, from.toString(), credit.timestamp.toString(), (credit.amount - 0.5).toString(), RefundStatus.RECEIVED.name),
+            200,
+        )
+        if (candidates.isEmpty()) return null
+        val cp = credit.counterparty?.lowercase()?.take(6)
+        fun sameMerchant(t: Transaction) = cp != null && t.counterparty?.lowercase()?.contains(cp) == true ||
+            cp != null && t.counterparty?.lowercase()?.take(6)?.let { credit.rawText.lowercase().contains(it) } == true
+        fun score(t: Transaction): Int =
+            (if (t.refundStatus == RefundStatus.EXPECTED) 8 else 0) +
+                (if (sameMerchant(t)) 4 else 0) +
+                (if (kotlin.math.abs(t.amount - credit.amount) < 0.5 || kotlin.math.abs((t.refundAmount ?: -1.0) - credit.amount) < 0.5) 2 else 0)
+        val best = candidates.maxWith(compareBy<Transaction> { score(it) }.thenBy { it.timestamp })
+        // Without a user-marked return, require at least a merchant match to avoid linking random credits.
+        return best.takeIf { score(it) >= 4 }
+    }
+
     fun delete(id: Long) {
         db.writableDatabase.delete("txn", "id = ?", arrayOf(id.toString()))
         bump()

@@ -13,6 +13,8 @@ import com.jayant.spendsense.notify.SplitPromptNotifier
 /** Glue between parsers and storage: persist (deduped) and, for live debits, ask about the split. */
 object TransactionIngestor {
 
+    private val REFUND_WORDS = Regex("\\b(refund(ed)?|reversed|reversal|returned)\\b", RegexOption.IGNORE_CASE)
+
     /**
      * Blocking — call off the main thread. [live] is true for freshly received SMS/notifications
      * and false for historical backfill (backfilled rows are marked reviewed and never prompt).
@@ -42,6 +44,13 @@ object TransactionIngestor {
             reviewed = !live || parsed.type == TxnType.CREDIT || parsed.paymentMode == PaymentMode.CASH,
         )
         val stored = TransactionRepository.get(context).insertIfNew(txn) ?: return null
+        if (stored.type == TxnType.CREDIT && REFUND_WORDS.containsMatchIn(rawText)) {
+            val repo = TransactionRepository.get(context)
+            repo.findRefundTarget(stored)?.let { purchase ->
+                repo.linkRefund(stored.id, purchase.id)
+                if (live) com.jayant.spendsense.notify.RefundNotifier.notifyRefundLinked(context, stored, purchase)
+            }
+        }
         if (live && !stored.reviewed && stored.type == TxnType.DEBIT && Settings(context).askSplitAfterPayment) {
             SplitPromptNotifier.notifyNewDebit(context, stored)
         }

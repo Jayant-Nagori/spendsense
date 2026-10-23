@@ -17,7 +17,7 @@ import java.io.RandomAccessFile
 internal class TransactionDb(context: Context) :
     SQLiteOpenHelper(
         context.applicationContext, DB_NAME, prepare(context.applicationContext), null,
-        /* version = */ 1, /* minimumSupportedVersion = */ 0,
+        /* version = */ 2, /* minimumSupportedVersion = */ 0,
         /* errorHandler = */ null, /* hook = */ null, /* enableWriteAheadLogging = */ true,
     ) {
 
@@ -41,7 +41,10 @@ internal class TransactionDb(context: Context) :
                 my_share REAL,
                 reviewed INTEGER NOT NULL DEFAULT 0,
                 note TEXT,
-                payment_mode TEXT
+                payment_mode TEXT,
+                refund_status TEXT NOT NULL DEFAULT 'NONE',
+                refund_amount REAL,
+                refund_of_id INTEGER
             )
             """.trimIndent()
         )
@@ -69,7 +72,13 @@ internal class TransactionDb(context: Context) :
         )
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE txn ADD COLUMN refund_status TEXT NOT NULL DEFAULT 'NONE'")
+            db.execSQL("ALTER TABLE txn ADD COLUMN refund_amount REAL")
+            db.execSQL("ALTER TABLE txn ADD COLUMN refund_of_id INTEGER")
+        }
+    }
 
     companion object {
         const val DB_NAME = "spendsense.db"
@@ -168,6 +177,9 @@ internal fun Transaction.toValues() = ContentValues().apply {
     put("reviewed", if (reviewed) 1 else 0)
     put("note", note)
     put("payment_mode", paymentMode?.name)
+    put("refund_status", refundStatus.name)
+    if (refundAmount == null) putNull("refund_amount") else put("refund_amount", refundAmount)
+    if (refundOfId == null) putNull("refund_of_id") else put("refund_of_id", refundOfId)
 }
 
 internal fun Cursor.toTransaction(): Transaction {
@@ -190,6 +202,9 @@ internal fun Cursor.toTransaction(): Transaction {
         reviewed = getInt(getColumnIndexOrThrow("reviewed")) == 1,
         note = str("note"),
         paymentMode = str("payment_mode")?.let { runCatching { PaymentMode.valueOf(it) }.getOrNull() },
+        refundStatus = str("refund_status")?.let { runCatching { RefundStatus.valueOf(it) }.getOrNull() } ?: RefundStatus.NONE,
+        refundAmount = getColumnIndexOrThrow("refund_amount").let { if (isNull(it)) null else getDouble(it) },
+        refundOfId = getColumnIndexOrThrow("refund_of_id").let { if (isNull(it)) null else getLong(it) },
     )
 }
 

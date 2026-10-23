@@ -4,6 +4,9 @@ enum class TxnType { DEBIT, CREDIT }
 
 enum class TxnSource { SMS, NOTIFICATION, MANUAL }
 
+/** NONE: normal. EXPECTED: user returned the item, refund not yet seen. RECEIVED: refund credit arrived/linked. */
+enum class RefundStatus { NONE, EXPECTED, RECEIVED }
+
 enum class PaymentMode { UPI, CARD, CASH, NETBANKING, WALLET, OTHER }
 
 /**
@@ -28,9 +31,21 @@ data class Transaction(
     val reviewed: Boolean = false,  // true once the user answered "fully mine" or entered a split share
     val note: String? = null,
     val paymentMode: PaymentMode? = null,
+    val refundStatus: RefundStatus = RefundStatus.NONE,
+    val refundAmount: Double? = null,   // on a DEBIT: amount returned (expected or received)
+    val refundOfId: Long? = null,       // on a CREDIT: id of the purchase this refund belongs to
 ) {
-    /** What this transaction cost *me*: the split share if known, else the full amount. */
-    val effectiveAmount: Double get() = if (isSplit && myShare != null) myShare else amount
+    val isRefundCredit: Boolean get() = type == TxnType.CREDIT && refundOfId != null
+
+    /**
+     * What this transaction cost *me*: the split share if known, else the full amount, reduced proportionally
+     * by any refund already received. Refund credits themselves cost nothing and are not income.
+     */
+    val effectiveAmount: Double get() {
+        val base = if (isSplit && myShare != null) myShare else amount
+        if (refundStatus != RefundStatus.RECEIVED || refundAmount == null || amount <= 0) return base
+        return (base * (1 - (refundAmount / amount).coerceIn(0.0, 1.0))).coerceAtLeast(0.0)
+    }
 }
 
 /** Output of a parser before it is persisted. */
