@@ -7,28 +7,21 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Remove
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
@@ -90,32 +83,27 @@ fun rememberSplitState(total: Double, isSplit: Boolean = false, myShare: Double?
     remember(key) { SplitState(total, fullyMine = !isSplit, share = myShare) }
 
 /**
- * "This was fully mine" checkbox; unchecked reveals "My share" with 1/2, 1/3, 1/4, Custom chips,
+ * "This was fully mine" square checkbox row; unticked reveals the share input, ½ ⅓ ¼ CUSTOM toggles,
  * a "split with N people" stepper and the live "Others owe you" result.
  */
 @Composable
 fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
     val focus = remember { FocusRequester() }
+    val fg = MaterialTheme.colorScheme.onSurface
+    val grey = MaterialTheme.colorScheme.onSurfaceVariant
     Column(modifier.fillMaxWidth().animateContentSize(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(
-            Modifier.fillMaxWidth().pressable(role = null) { state.fullyMine = !state.fullyMine; state.touched = true },
+            Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                .pressable(role = androidx.compose.ui.semantics.Role.Checkbox) { state.fullyMine = !state.fullyMine; state.touched = true },
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Checkbox(
-                checked = state.fullyMine,
-                onCheckedChange = null,
-                colors = CheckboxDefaults.colors(
-                    checkedColor = MaterialTheme.colorScheme.primary,
-                    checkmarkColor = MaterialTheme.colorScheme.onPrimary,
-                    uncheckedColor = MaterialTheme.colorScheme.outline,
-                ),
-            )
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("This was fully mine", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
+            SquareCheck(state.fullyMine)
+            Column(Modifier.weight(1f)) {
+                Text("This was fully mine", style = MaterialTheme.typography.titleSmall, color = fg)
                 Text(
                     if (state.fullyMine) "The whole amount counts as your spend" else "Only your share counts as your spend",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall, color = grey,
                 )
             }
         }
@@ -126,6 +114,7 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
             exit = shrinkVertically() + fadeOut(),
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                FieldLabel("My share")
                 OutlinedTextField(
                     value = state.shareText,
                     onValueChange = { v ->
@@ -133,65 +122,57 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
                             state.shareText = v; state.people = 0; state.touched = true
                         }
                     },
-                    label = { Text("My share") },
-                    prefix = { Text("₹ ", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    placeholder = { Text("Amount you owe, e.g. ${SplitState.plain(state.total / 2)}") },
+                    prefix = { Text("₹ ", color = grey) },
                     singleLine = true,
                     isError = state.share != null && state.share!! > state.total + 0.004,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    shape = MaterialTheme.shapes.medium,
+                    shape = MaterialTheme.shapes.small,
+                    colors = neoFieldColors(),
+                    textStyle = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SpendChip("1/2", state.people == 2, { state.applyPeople(2) })
-                    SpendChip("1/3", state.people == 3, { state.applyPeople(3) })
-                    SpendChip("1/4", state.people == 4, { state.applyPeople(4) })
-                    SpendChip("Custom", state.people == 0, { state.people = 0; state.touched = true; runCatching { focus.requestFocus() } })
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SpendChip("½", state.people == 2, { state.applyPeople(2) }, Modifier.weight(1f))
+                    SpendChip("⅓", state.people == 3, { state.applyPeople(3) }, Modifier.weight(1f))
+                    SpendChip("¼", state.people == 4, { state.applyPeople(4) }, Modifier.weight(1f))
+                    SpendChip(
+                        "CUSTOM", state.people == 0 && state.shareText.isNotEmpty(),
+                        { state.people = 0; state.touched = true; runCatching { focus.requestFocus() } },
+                        Modifier.weight(1.6f),
+                    )
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Split with", style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Stepper(Icons.Rounded.Remove, "Fewer people", enabled = state.people > 2) { state.applyPeople(if (state.people == 0) 2 else state.people - 1) }
+                    Text("Split with", style = MaterialTheme.typography.bodyMedium, color = grey)
+                    Spacer(Modifier.width(12.dp))
+                    SquareIconButton(Icons.Rounded.Remove, "Fewer people", { state.applyPeople(if (state.people == 0) 2 else state.people - 1) }, enabled = state.people > 2, size = 36.dp)
                     Text(
                         if (state.people == 0) "–" else state.people.toString(),
-                        style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center, modifier = Modifier.width(34.dp),
+                        style = MaterialTheme.typography.titleMedium, color = fg,
+                        textAlign = TextAlign.Center, modifier = Modifier.width(36.dp),
                     )
-                    Stepper(Icons.Rounded.Add, "More people", enabled = state.people < 20) { state.applyPeople(if (state.people == 0) 2 else state.people + 1) }
-                    Spacer(Modifier.width(8.dp))
-                    Text("people", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    SquareIconButton(Icons.Rounded.Add, "More people", { state.applyPeople(if (state.people == 0) 2 else state.people + 1) }, enabled = state.people < 20, size = 36.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text("people", style = MaterialTheme.typography.bodyMedium, color = grey)
                 }
                 Row(
-                    Modifier.fillMaxWidth().clip(MaterialTheme.shapes.medium)
-                        .background(MaterialTheme.spend.credit.copy(alpha = 0.10f)).padding(horizontal = 16.dp, vertical = 14.dp),
+                    Modifier.fillMaxWidth().clip(MaterialTheme.shapes.small)
+                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                        .border(1.dp, MaterialTheme.spend.hairline, MaterialTheme.shapes.small)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Text("Others owe you", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+                    Text("OTHERS OWE YOU", style = MaterialTheme.typography.labelSmall, color = grey, modifier = Modifier.weight(1f))
                     if (state.isValid) {
-                        MoneyText(state.othersOwe, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.spend.credit, animate = true, decimals = MoneyDecimals.AUTO)
+                        MoneyText(state.othersOwe, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.spend.credit, decimals = MoneyDecimals.AUTO)
                     } else if (state.share == null) {
-                        Text("Enter your share", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("Pick ½ ⅓ ¼ or type your share", style = MaterialTheme.typography.bodySmall, color = grey)
                     } else {
                         Text("Share can't exceed total", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun Stepper(icon: androidx.compose.ui.graphics.vector.ImageVector, desc: String, enabled: Boolean, onClick: () -> Unit) {
-    Box(
-        Modifier.size(48.dp).clip(CircleShape)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .border(1.dp, MaterialTheme.spend.hairline, CircleShape)
-            .pressable(enabled = enabled, haptic = true, onClick = onClick),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(icon, desc, tint = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
     }
 }
 
@@ -202,7 +183,7 @@ fun splitHeadline(txn: Transaction): String {
 }
 
 /**
- * Whole split prompt body (headline, TOTAL, editor, save). Used by SplitActivity and the in-app bottom sheet.
+ * Whole split prompt body (headline, big TOTAL, editor, SAVE). Used by SplitActivity and the in-app bottom sheet.
  * [onSave] receives (isSplit, myShare).
  */
 @Composable
@@ -214,12 +195,13 @@ fun SplitContent(
     startAsSplit: Boolean = false,
 ) {
     val state = rememberSplitState(txn.amount, txn.isSplit || (startAsSplit && !txn.reviewed), txn.myShare, key = txn.id)
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Text(splitHeadline(txn), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Column {
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Overline("Total")
             MoneyText(txn.amount, style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onSurface, symbolScale = 0.5f)
+            Text(splitHeadline(txn), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        HairlineDivider()
         SplitEditor(state)
         PrimaryButton(saveLabel, onClick = { onSave(state.isSplit, state.myShare) }, enabled = state.isValid, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(4.dp))

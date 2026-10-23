@@ -2,40 +2,45 @@ package com.jayant.spendsense.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.DateRangePicker
 import androidx.compose.material3.rememberDateRangePickerState
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -46,29 +51,34 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jayant.spendsense.data.PaymentMode
 import com.jayant.spendsense.data.Transaction
 import com.jayant.spendsense.data.TransactionRepository
 import com.jayant.spendsense.data.TxnType
+import com.jayant.spendsense.ui.components.AddFab
 import com.jayant.spendsense.ui.components.EmptyState
+import com.jayant.spendsense.ui.components.FieldLabel
+import com.jayant.spendsense.ui.components.GhostButton
 import com.jayant.spendsense.ui.components.HairlineDivider
 import com.jayant.spendsense.ui.components.MoneyText
+import com.jayant.spendsense.ui.components.PaymentModePickerOrder
+import com.jayant.spendsense.ui.components.PrimaryButton
+import com.jayant.spendsense.ui.components.SkeletonRow
 import com.jayant.spendsense.ui.components.SpendCategories
 import com.jayant.spendsense.ui.components.SpendChip
+import com.jayant.spendsense.ui.components.SquareIconButton
 import com.jayant.spendsense.ui.components.TransactionRow
-import com.jayant.spendsense.ui.components.PaymentModePickerOrder
 import com.jayant.spendsense.ui.components.addMonths
-import com.jayant.spendsense.ui.components.SkeletonRow
 import com.jayant.spendsense.ui.components.formatDayHeader
 import com.jayant.spendsense.ui.components.formatRupeesCompact
 import com.jayant.spendsense.ui.components.label
+import com.jayant.spendsense.ui.components.neoFieldColors
 import com.jayant.spendsense.ui.components.pressable
-import com.jayant.spendsense.ui.components.staggeredEntrance
 import com.jayant.spendsense.ui.components.startOfDay
 import com.jayant.spendsense.ui.components.startOfMonth
 import kotlinx.coroutines.Dispatchers
@@ -119,9 +129,11 @@ private fun matches(t: Transaction, f: Filters, bounds: Pair<Long, Long>?): Bool
     return true
 }
 
+private fun Filters.advancedCount() = listOf(category != null, mode != null, preset != DatePreset.ANY).count { it }
+
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
-fun TransactionsScreen() {
+fun TransactionsScreen(onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val repo = remember { TransactionRepository.get(context) }
     val changes by repo.changes.collectAsState()
@@ -130,6 +142,7 @@ fun TransactionsScreen() {
     var detail by remember { mutableStateOf<Transaction?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var showRange by remember { mutableStateOf(false) }
+    var showFilters by remember { mutableStateOf(false) }
 
     LaunchedEffect(changes) { all = withContext(Dispatchers.IO) { repo.all() } }
 
@@ -142,6 +155,7 @@ fun TransactionsScreen() {
     val received = filtered.filter { it.type == TxnType.CREDIT }.sumOf { it.amount }
     val listState = rememberLazyListState()
     val focus = LocalFocusManager.current
+    val advanced = filters.advancedCount()
 
     Box(Modifier.fillMaxSize()) {
         LazyColumn(
@@ -151,12 +165,15 @@ fun TransactionsScreen() {
         ) {
             item(key = "header") {
                 Column(Modifier.padding(horizontal = 20.dp).padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column {
-                        Text("Transactions", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurface)
-                        Text(
-                            if (all == null) " " else "${filtered.size} shown  ·  ${formatRupeesCompact(spent)} spent  ·  ${formatRupeesCompact(received)} in",
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                        if (onBack != null) SquareIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", onBack)
+                        Column(Modifier.weight(1f)) {
+                            Text("Activity", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
+                            Text(
+                                if (all == null) " " else "${filtered.size} shown  ·  ${formatRupeesCompact(spent)} spent  ·  ${formatRupeesCompact(received)} in",
+                                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1,
+                            )
+                        }
                     }
                     OutlinedTextField(
                         value = filters.query,
@@ -165,56 +182,68 @@ fun TransactionsScreen() {
                         leadingIcon = { Icon(Icons.Rounded.Search, null) },
                         trailingIcon = {
                             if (filters.query.isNotEmpty()) {
-                                Box(Modifier.size(40.dp).clip(CircleShape).pressable(role = null) { filters = filters.copy(query = "") }, contentAlignment = Alignment.Center) {
+                                Box(Modifier.size(40.dp).pressable(role = null) { filters = filters.copy(query = "") }, contentAlignment = Alignment.Center) {
                                     Icon(Icons.Rounded.Close, "Clear search")
                                 }
                             }
                         },
                         singleLine = true,
-                        shape = CircleShape,
+                        shape = MaterialTheme.shapes.small,
+                        colors = neoFieldColors(),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                         keyboardActions = KeyboardActions(onSearch = { focus.clearFocus() }),
                         modifier = Modifier.fillMaxWidth(),
                     )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SpendChip("All", filters.type == null, { filters = filters.copy(type = null) }, Modifier.weight(1f))
+                        SpendChip("Spent", filters.type == TxnType.DEBIT, { filters = filters.copy(type = if (filters.type == TxnType.DEBIT) null else TxnType.DEBIT) }, Modifier.weight(1f))
+                        SpendChip("Received", filters.type == TxnType.CREDIT, { filters = filters.copy(type = if (filters.type == TxnType.CREDIT) null else TxnType.CREDIT) }, Modifier.weight(1.3f))
+                        SpendChip(
+                            if (advanced > 0) "Filters $advanced" else "Filters", advanced > 0, { showFilters = true }, Modifier.weight(1.3f),
+                            leading = { Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(16.dp)) },
+                        )
+                    }
                 }
-            }
-            item(key = "filters") {
-                FilterBar(
-                    filters, onChange = { filters = it }, onCustomRange = { showRange = true },
-                    modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
-                )
             }
 
             if (all == null) {
                 items(7) { Column(Modifier.padding(horizontal = 20.dp)) { SkeletonRow() } }
             } else if (filtered.isEmpty()) {
                 item(key = "empty") {
-                    EmptyState(
-                        if (filters.isActive()) "No matches" else "No transactions yet",
-                        if (filters.isActive()) "Try clearing a filter or searching for something else."
-                        else "New payments appear here automatically. Tap Add to record a cash payment.",
-                    )
+                    Column(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp)) {
+                        EmptyState(
+                            if (filters.isActive()) "No matches" else "No transactions yet",
+                            if (filters.isActive()) "Try clearing a filter or searching for something else."
+                            else "New payments appear here automatically. Tap Add to record a cash payment.",
+                        )
+                    }
                 }
             } else {
                 grouped.forEach { (day, list) ->
-                    stickyHeader(key = "day-$day") {
-                        DayHeader(day, list)
-                    }
+                    stickyHeader(key = "day-$day") { DayHeader(day, list) }
                     items(list.size, key = { list[it].id }) { i ->
                         val t = list[i]
                         Column(Modifier.padding(horizontal = 20.dp)) {
                             TransactionRow(t, onClick = { detail = t })
+                            if (i < list.lastIndex) HairlineDivider()
                         }
                     }
                 }
             }
         }
 
-        AddButton(Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 20.dp)) { showAdd = true }
+        AddFab({ showAdd = true }, Modifier.align(Alignment.BottomEnd).padding(end = 20.dp, bottom = 20.dp))
     }
 
     detail?.let { TransactionDetailSheet(it, onDismiss = { detail = null }) }
     if (showAdd) ManualEntrySheet(onDismiss = { showAdd = false })
+    if (showFilters) {
+        FiltersSheet(
+            filters, onChange = { filters = it },
+            onCustomRange = { showRange = true },
+            onDismiss = { showFilters = false },
+        )
+    }
 
     if (showRange) {
         val state = rememberDateRangePickerState()
@@ -248,92 +277,70 @@ private fun utcDayToLocalStart(utcMillis: Long): Long {
 @Composable
 private fun DayHeader(day: Long, list: List<Transaction>) {
     val spent = list.filter { it.type == TxnType.DEBIT }.sumOf { it.effectiveAmount }
-    Row(
-        Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).padding(horizontal = 20.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(formatDayHeader(day), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
-        if (spent > 0) {
-            MoneyText(spent, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, symbolScale = 0.9f)
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                formatDayHeader(day).uppercase(), style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f),
+            )
+            if (spent > 0) {
+                MoneyText(spent, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, symbolScale = 0.9f)
+            }
         }
+        HairlineDivider(Modifier.padding(horizontal = 20.dp))
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-private fun FilterBar(filters: Filters, onChange: (Filters) -> Unit, onCustomRange: () -> Unit, modifier: Modifier = Modifier) {
-    Row(
-        modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+private fun FiltersSheet(filters: Filters, onChange: (Filters) -> Unit, onCustomRange: () -> Unit, onDismiss: () -> Unit) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraLarge,
     ) {
-        SpendChip("All", filters.type == null, { onChange(filters.copy(type = null)) })
-        SpendChip("Spent", filters.type == TxnType.DEBIT, { onChange(filters.copy(type = if (filters.type == TxnType.DEBIT) null else TxnType.DEBIT)) })
-        SpendChip("Received", filters.type == TxnType.CREDIT, { onChange(filters.copy(type = if (filters.type == TxnType.CREDIT) null else TxnType.CREDIT)) })
-
-        MenuChip(filters.category ?: "Category", filters.category != null) { dismiss ->
-            DropdownMenuItem(text = { Text("All categories") }, onClick = { onChange(filters.copy(category = null)); dismiss() })
-            SpendCategories.forEach { c ->
-                DropdownMenuItem(
-                    text = { Text(c) },
-                    onClick = { onChange(filters.copy(category = c)); dismiss() },
-                )
+        Column(
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding(),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FieldLabel("Category")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SpendChip("Any", filters.category == null, { onChange(filters.copy(category = null)) })
+                    SpendCategories.forEach { c ->
+                        SpendChip(c, filters.category == c, { onChange(filters.copy(category = if (filters.category == c) null else c)) })
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FieldLabel("Paid with")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SpendChip("Any", filters.mode == null, { onChange(filters.copy(mode = null)) })
+                    PaymentModePickerOrder.forEach { m ->
+                        SpendChip(m.label(), filters.mode == m, { onChange(filters.copy(mode = if (filters.mode == m) null else m)) })
+                    }
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                FieldLabel("Date")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    DatePreset.entries.forEach { p ->
+                        SpendChip(
+                            if (p == DatePreset.ANY) "Any time" else p.label, filters.preset == p,
+                            { if (p == DatePreset.CUSTOM) onCustomRange() else onChange(filters.copy(preset = p)) },
+                        )
+                    }
+                }
+            }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                GhostButton("Clear", { onChange(filters.copy(category = null, mode = null, preset = DatePreset.ANY)) }, Modifier.weight(1f))
+                PrimaryButton("Done", onDismiss, Modifier.weight(1f))
             }
         }
-        MenuChip(filters.mode?.label() ?: "Paid with", filters.mode != null) { dismiss ->
-            DropdownMenuItem(text = { Text("Any method") }, onClick = { onChange(filters.copy(mode = null)); dismiss() })
-            PaymentModePickerOrder.forEach { m ->
-                DropdownMenuItem(text = { Text(m.label()) }, onClick = { onChange(filters.copy(mode = m)); dismiss() })
-            }
-        }
-        MenuChip(
-            when (filters.preset) {
-                DatePreset.CUSTOM -> "Custom dates"
-                DatePreset.ANY -> "Date"
-                else -> filters.preset.label
-            },
-            filters.preset != DatePreset.ANY,
-        ) { dismiss ->
-            DatePreset.entries.forEach { p ->
-                DropdownMenuItem(
-                    text = { Text(p.label) },
-                    onClick = {
-                        dismiss()
-                        if (p == DatePreset.CUSTOM) onCustomRange() else onChange(filters.copy(preset = p))
-                    },
-                )
-            }
-        }
-        if (filters.isActive()) {
-            SpendChip("Clear", false, { onChange(Filters()) })
-        }
-    }
-}
-
-@Composable
-private fun MenuChip(label: String, active: Boolean, items: @Composable (dismiss: () -> Unit) -> Unit) {
-    var open by remember { mutableStateOf(false) }
-    Box {
-        SpendChip(
-            label = label, selected = active, onClick = { open = true },
-            leading = null,
-        )
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, shape = MaterialTheme.shapes.medium) {
-            items { open = false }
-        }
-    }
-}
-
-@Composable
-private fun AddButton(modifier: Modifier, onClick: () -> Unit) {
-    Row(
-        modifier
-            .clip(CircleShape)
-            .background(MaterialTheme.colorScheme.primary)
-            .pressable(haptic = true, onClick = onClick)
-            .padding(start = 18.dp, end = 22.dp, top = 16.dp, bottom = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Icon(Icons.Rounded.Add, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(22.dp))
-        Text("Add", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onPrimary)
     }
 }

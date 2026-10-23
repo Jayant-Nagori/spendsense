@@ -208,5 +208,28 @@ fun StackedShareBar(mine: Double, other: Double, mineColor: Color, otherColor: C
     }
 }
 
+/** One segment of a [StackedBar]: relative [weight] and its [color]. */
+data class BarSegment(val weight: Double, val color: Color)
+
+/** Flat NeoPOP stacked bar: square segments separated by thin gaps, drawn in once. Default 4dp tall. */
+@Composable
+fun StackedBar(segments: List<BarSegment>, modifier: Modifier = Modifier, height: Dp = 4.dp) {
+    val progress = rememberEntranceProgress(key = segments.map { it.weight }, millis = 700, delay = 150)
+    val track = MaterialTheme.spend.hairline
+    val total = segments.sumOf { it.weight }
+    Canvas(modifier.fillMaxWidth().height(height)) {
+        drawRect(track, size = size)
+        if (total <= 0.0) return@Canvas
+        val gap = 2.dp.toPx()
+        val usable = size.width - gap * (segments.size - 1).coerceAtLeast(0)
+        var x = 0f
+        segments.forEach { s ->
+            val w = (usable * (s.weight / total)).toFloat() * progress
+            if (w > 0f) drawRect(s.color, topLeft = Offset(x, 0f), size = Size(w, size.height))
+            x += (usable * (s.weight / total)).toFloat() + gap
+        }
+    }
+}
+
 @Suppress("unused")
 private val keepStyle = TextStyle.Default

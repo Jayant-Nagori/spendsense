@@ -7,43 +7,37 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ReceiptLong
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AccountBalanceWallet
 import androidx.compose.material.icons.rounded.AutoAwesome
-import androidx.compose.material.icons.rounded.Dashboard
-import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -52,14 +46,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -70,25 +64,36 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.jayant.spendsense.ai.AssistantScreen
 import com.jayant.spendsense.portfolio.PortfolioScreen
 import com.jayant.spendsense.security.AppLockGate
 import com.jayant.spendsense.security.SecureWindow
-import com.jayant.spendsense.ui.components.pressable
+import com.jayant.spendsense.ui.components.SquareIconButton
 import com.jayant.spendsense.ui.theme.SpendSenseTheme
 import com.jayant.spendsense.ui.theme.resolveDark
 import com.jayant.spendsense.ui.theme.spend
 
-private data class Tab(val label: String, val icon: ImageVector, val short: String = label)
+private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab("Dashboard", Icons.Rounded.Dashboard, "Home"),
-    Tab("Transactions", Icons.AutoMirrored.Rounded.ReceiptLong, "Activity"),
+    Tab("Home", Icons.Rounded.Home),
     Tab("Wealth", Icons.Rounded.AccountBalanceWallet),
-    Tab("Ask AI", Icons.Rounded.AutoAwesome),
-    Tab("Settings", Icons.Rounded.Settings),
+    Tab("Ask", Icons.Rounded.AutoAwesome),
+)
+
+/** Where the shell currently is: the three tabs, or a full-screen secondary route opened from Home. */
+private sealed interface Route {
+    data object Tabs : Route
+    data object Activity : Route
+    data object Settings : Route
+}
+
+private val RouteSaver = Saver<Route, String>(
+    save = { when (it) { Route.Tabs -> "tabs"; Route.Activity -> "activity"; Route.Settings -> "settings" } },
+    restore = { when (it) { "activity" -> Route.Activity; "settings" -> Route.Settings; else -> Route.Tabs } },
 )
 
 class MainActivity : FragmentActivity() {
@@ -106,7 +111,7 @@ class MainActivity : FragmentActivity() {
                     statusBarStyle = if (dark) SystemBarStyle.dark(bar) else SystemBarStyle.light(bar, bar),
                     navigationBarStyle = if (dark) SystemBarStyle.dark(bar) else SystemBarStyle.light(bar, bar),
                 )
-                window.setBackgroundDrawable(ColorDrawable(if (dark) AColor.parseColor("#0A0A0F") else AColor.parseColor("#F5F5F9")))
+                window.setBackgroundDrawable(ColorDrawable(if (dark) AColor.BLACK else AColor.parseColor("#F4F4F0")))
             }
             SpendSenseTheme(dark) {
                 AppLockGate(this) {
@@ -137,86 +142,80 @@ private fun NotificationPermissionOnFirstLaunch() {
 @Composable
 private fun AppShell() {
     var selected by rememberSaveable { mutableIntStateOf(0) }
+    var route by rememberSaveable(stateSaver = RouteSaver) { mutableStateOf<Route>(Route.Tabs) }
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    // System back: secondary screen -> Home, other tab -> Home.
+    BackHandler(enabled = route != Route.Tabs) { route = Route.Tabs }
+    BackHandler(enabled = route == Route.Tabs && selected != 0) { selected = 0 }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
-            // Hidden while typing so screens with their own imePadding (Ask AI) keep their layout.
+            // Hidden on secondary screens and while typing so screens with their own imePadding keep their layout.
             AnimatedVisibility(
-                visible = !imeVisible,
-                enter = fadeIn(tween(160)) + slideInVertically { it / 2 },
-                exit = fadeOut(tween(120)) + slideOutVertically { it / 2 },
+                visible = !imeVisible && route == Route.Tabs,
+                enter = fadeIn(tween(150)),
+                exit = fadeOut(tween(120)),
             ) {
-                FloatingNav(selected) { selected = it }
+                FlatNav(selected) { selected = it }
             }
         },
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding)) {
-            AnimatedContent(
-                targetState = selected,
-                transitionSpec = { fadeIn(tween(220, delayMillis = 60)) togetherWith fadeOut(tween(120)) },
-                label = "tab",
-            ) { tab ->
-                when (tab) {
-                    0 -> DashboardScreen(onSeeAllTransactions = { selected = 1 })
-                    1 -> TransactionsScreen()
-                    2 -> PortfolioScreen()
-                    3 -> AssistantScreen()
-                    else -> SettingsScreen()
+            when (route) {
+                Route.Tabs -> AnimatedContent(
+                    targetState = selected,
+                    transitionSpec = { fadeIn(tween(200, delayMillis = 40)) togetherWith fadeOut(tween(120)) },
+                    label = "tab",
+                ) { tab ->
+                    when (tab) {
+                        0 -> DashboardScreen(
+                            onSeeAllTransactions = { route = Route.Activity },
+                            onOpenSettings = { route = Route.Settings },
+                        )
+                        1 -> PortfolioScreen()
+                        else -> AssistantScreen()
+                    }
+                }
+                Route.Activity -> TransactionsScreen(onBack = { route = Route.Tabs })
+                Route.Settings -> Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 8.dp)) {
+                        SquareIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", { route = Route.Tabs })
+                    }
+                    Box(Modifier.weight(1f)) { SettingsScreen() }
                 }
             }
         }
     }
 }
 
-/** Floating pill: icons only, the active destination expands to icon + label on a tinted capsule. */
+/** Flat full-width bar: black, 1dp top hairline, three items with icon + tiny uppercase label. */
 @Composable
-private fun FloatingNav(selected: Int, onSelect: (Int) -> Unit) {
+private fun FlatNav(selected: Int, onSelect: (Int) -> Unit) {
     val haptic = LocalHapticFeedback.current
-    Box(Modifier.fillMaxWidth().navigationBarsPadding().padding(horizontal = 16.dp, vertical = 10.dp), contentAlignment = Alignment.Center) {
-        Row(
-            Modifier
-                .shadow(18.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                .border(1.dp, MaterialTheme.spend.hairline, CircleShape)
-                .padding(6.dp)
-                .animateContentSize(spring(Spring.DampingRatioNoBouncy, Spring.StiffnessMediumLow)),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.spend.hairline))
+        Row(Modifier.fillMaxWidth()) {
             tabs.forEachIndexed { i, tab ->
                 val active = selected == i
-                val bg by animateColorAsState(
-                    if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent, label = "navBg",
-                )
-                val fg by animateColorAsState(
-                    if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, label = "navFg",
-                )
-                Row(
+                val tint = if (active) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
+                Column(
                     Modifier
-                        .heightIn(min = 48.dp)
-                        .clip(CircleShape)
-                        .background(bg)
-                        .pressable(role = Role.Tab) {
+                        .weight(1f)
+                        .height(60.dp)
+                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Tab) {
                             if (!active) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                             onSelect(i)
                         }
-                        .semantics { this.selected = active; contentDescription = tab.label }
-                        .padding(horizontal = if (active) 14.dp else 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .semantics { this.selected = active; contentDescription = tab.label },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(tab.icon, null, tint = fg, modifier = Modifier.size(22.dp))
-                    if (active) Text(tab.short, style = MaterialTheme.typography.labelLarge, color = fg, maxLines = 1)
+                    Icon(tab.icon, null, tint = tint, modifier = Modifier.size(22.dp))
+                    Text(tab.label.uppercase(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 1.2.sp), color = tint, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
                 }
             }
         }
     }
 }
-
-@Suppress("unused")
-private val keepShape = RoundedCornerShape(0.dp)
-@Suppress("unused")
-private val keepFill = Modifier.fillMaxWidth()
