@@ -89,11 +89,12 @@ private sealed interface Route {
     data object Tabs : Route
     data object Activity : Route
     data object Settings : Route
+    data object Import : Route
 }
 
 private val RouteSaver = Saver<Route, String>(
-    save = { when (it) { Route.Tabs -> "tabs"; Route.Activity -> "activity"; Route.Settings -> "settings" } },
-    restore = { when (it) { "activity" -> Route.Activity; "settings" -> Route.Settings; else -> Route.Tabs } },
+    save = { when (it) { Route.Tabs -> "tabs"; Route.Activity -> "activity"; Route.Settings -> "settings"; Route.Import -> "import" } },
+    restore = { when (it) { "activity" -> Route.Activity; "settings" -> Route.Settings; "import" -> Route.Import; else -> Route.Tabs } },
 )
 
 class MainActivity : FragmentActivity() {
@@ -146,7 +147,7 @@ private fun AppShell() {
     val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
 
     // System back: secondary screen -> Home, other tab -> Home.
-    BackHandler(enabled = route != Route.Tabs) { route = Route.Tabs }
+    BackHandler(enabled = route != Route.Tabs) { route = if (route == Route.Import) Route.Settings else Route.Tabs }
     BackHandler(enabled = route == Route.Tabs && selected != 0) { selected = 0 }
 
     Scaffold(
@@ -185,6 +186,10 @@ private fun AppShell() {
                     }
                     Box(Modifier.weight(1f)) { SettingsScreen() }
                 }
+                Route.Import -> com.jayant.spendsense.imports.ImportScreen(
+                    onBack = { route = Route.Settings },
+                    emailSection = { com.jayant.spendsense.imports.email.EmailImportSection() },
+                )
             }
         }
     }
