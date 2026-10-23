@@ -54,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jayant.spendsense.data.PaymentMode
@@ -76,6 +77,7 @@ import com.jayant.spendsense.ui.components.TransactionRow
 import com.jayant.spendsense.ui.components.addMonths
 import com.jayant.spendsense.ui.components.formatDayHeader
 import com.jayant.spendsense.ui.components.formatRupeesCompact
+import com.jayant.spendsense.ui.components.formatRupeesWhole
 import com.jayant.spendsense.ui.components.label
 import com.jayant.spendsense.ui.components.neoFieldColors
 import com.jayant.spendsense.ui.components.pressable
@@ -98,7 +100,11 @@ private data class Filters(
     val preset: DatePreset = DatePreset.ANY,
     val customFrom: Long? = null,
     val customTo: Long? = null,
+    val minAmount: Double? = null,
+    val maxAmount: Double? = null,
 )
+
+private val AMOUNT_PRESETS = listOf(500.0, 1_000.0, 5_000.0, 10_000.0)
 
 private fun Filters.dateBounds(): Pair<Long, Long>? {
     val now = System.currentTimeMillis()
@@ -114,12 +120,15 @@ private fun Filters.dateBounds(): Pair<Long, Long>? {
     }
 }
 
-private fun Filters.isActive() = query.isNotBlank() || type != null || category != null || mode != null || preset != DatePreset.ANY
+private fun Filters.isActive() = query.isNotBlank() || type != null || category != null || mode != null || preset != DatePreset.ANY ||
+    minAmount != null || maxAmount != null
 
 private fun matches(t: Transaction, f: Filters, bounds: Pair<Long, Long>?): Boolean {
     if (f.type != null && t.type != f.type) return false
     if (f.category != null && t.category != f.category) return false
     if (f.mode != null && t.paymentMode != f.mode) return false
+    if (f.minAmount != null && t.amount < f.minAmount) return false
+    if (f.maxAmount != null && t.amount > f.maxAmount) return false
     if (bounds != null && (t.timestamp < bounds.first || t.timestamp >= bounds.second)) return false
     val q = f.query.trim()
     if (q.isNotEmpty()) {
@@ -129,7 +138,7 @@ private fun matches(t: Transaction, f: Filters, bounds: Pair<Long, Long>?): Bool
     return true
 }
 
-private fun Filters.advancedCount() = listOf(category != null, mode != null, preset != DatePreset.ANY).count { it }
+private fun Filters.advancedCount() = listOf(category != null, mode != null, preset != DatePreset.ANY, minAmount != null || maxAmount != null).count { it }
 
 @OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
@@ -199,8 +208,9 @@ fun TransactionsScreen(onBack: (() -> Unit)? = null) {
                         SpendChip("Spent", filters.type == TxnType.DEBIT, { filters = filters.copy(type = if (filters.type == TxnType.DEBIT) null else TxnType.DEBIT) }, Modifier.weight(1f))
                         SpendChip("Received", filters.type == TxnType.CREDIT, { filters = filters.copy(type = if (filters.type == TxnType.CREDIT) null else TxnType.CREDIT) }, Modifier.weight(1.3f))
                         SpendChip(
-                            if (advanced > 0) "Filters $advanced" else "Filters", advanced > 0, { showFilters = true }, Modifier.weight(1.3f),
-                            leading = { Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(16.dp)) },
+                            if (advanced > 0) "Filters · $advanced" else "Filters", advanced > 0, { showFilters = true }, Modifier.weight(1.3f),
+                            // Drop the icon when active so the count fits.
+                            leading = if (advanced > 0) null else { { Icon(Icons.Rounded.Tune, null, modifier = Modifier.size(16.dp)) } },
                         )
                     }
                 }
@@ -308,6 +318,7 @@ private fun FiltersSheet(filters: Filters, onChange: (Filters) -> Unit, onCustom
             Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
+            AmountFilter(filters, onChange)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 FieldLabel("Category")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -338,9 +349,60 @@ private fun FiltersSheet(filters: Filters, onChange: (Filters) -> Unit, onCustom
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                GhostButton("Clear", { onChange(filters.copy(category = null, mode = null, preset = DatePreset.ANY)) }, Modifier.weight(1f))
+                GhostButton("Clear", { onChange(filters.copy(category = null, mode = null, preset = DatePreset.ANY, minAmount = null, maxAmount = null)) }, Modifier.weight(1f))
                 PrimaryButton("Done", onDismiss, Modifier.weight(1f))
             }
         }
     }
 }
+
+/** "More than" quick picks plus free min/max fields. Amounts are the full transaction amount, not your split share. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun AmountFilter(filters: Filters, onChange: (Filters) -> Unit) {
+    var minText by remember { mutableStateOf(filters.minAmount?.let { formatAmountInput(it) }.orEmpty()) }
+    var maxText by remember { mutableStateOf(filters.maxAmount?.let { formatAmountInput(it) }.orEmpty()) }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        FieldLabel("Amount")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            SpendChip("Any", filters.minAmount == null && filters.maxAmount == null, {
+                minText = ""; maxText = ""
+                onChange(filters.copy(minAmount = null, maxAmount = null))
+            })
+            AMOUNT_PRESETS.forEach { v ->
+                val selected = filters.minAmount == v && filters.maxAmount == null
+                SpendChip("Over ${formatRupeesWhole(v)}", selected, {
+                    val next = if (selected) null else v
+                    minText = next?.let { formatAmountInput(it) }.orEmpty(); maxText = ""
+                    onChange(filters.copy(minAmount = next, maxAmount = null))
+                })
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            AmountField(minText, "More than ₹", Modifier.weight(1f)) {
+                minText = it; onChange(filters.copy(minAmount = parseAmountInput(it)))
+            }
+            AmountField(maxText, "Less than ₹", Modifier.weight(1f)) {
+                maxText = it; onChange(filters.copy(maxAmount = parseAmountInput(it)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AmountField(value: String, label: String, modifier: Modifier, onValueChange: (String) -> Unit) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { v -> if (v.length <= 10 && v.all { it.isDigit() || it == '.' } && v.count { it == '.' } <= 1) onValueChange(v) },
+        label = { Text(label) },
+        singleLine = true,
+        shape = MaterialTheme.shapes.small,
+        colors = neoFieldColors(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        modifier = modifier,
+    )
+}
+
+private fun parseAmountInput(s: String): Double? = s.toDoubleOrNull()?.takeIf { it > 0 }
+
+private fun formatAmountInput(v: Double): String = if (v % 1.0 == 0.0) v.toLong().toString() else v.toString()

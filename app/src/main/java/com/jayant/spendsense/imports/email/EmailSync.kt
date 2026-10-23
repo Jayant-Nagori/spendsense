@@ -47,7 +47,7 @@ object EmailSync {
             EmailSyncState.Done(counts)
         } catch (e: EmailImportException) {
             EmailSyncState.Failed(e.failure)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             EmailSyncState.Failed(EmailFailure.classify(e))
         } finally {
             password?.fill('\u0000')
@@ -76,7 +76,8 @@ object EmailSync {
             .setPeriodic(PERIOD_MS)
             .setPersisted(false)
             .build()
-        js.schedule(info)
+        // Never let scheduling take the app down; the sync still runs on app start and from "Sync now".
+        runCatching { js.schedule(info) }
     }
 
     fun cancelSchedule(context: Context) {

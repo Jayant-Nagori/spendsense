@@ -1,5 +1,7 @@
 package com.jayant.spendsense.ui.components
 
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
@@ -60,7 +62,8 @@ fun SpendChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         ) {
-            leading?.invoke()
+            // Icons follow the label colour so they stay visible on the white selected face.
+            leading?.let { CompositionLocalProvider(LocalContentColor provides text) { it() } }
             Text(label, style = MaterialTheme.typography.labelLarge, color = text, maxLines = 1)
         }
     }

@@ -14,7 +14,7 @@ data class DateRange(val from: LocalDate, val toExclusive: LocalDate, val label:
     fun toMillis(zone: ZoneId): Long = toExclusive.atStartOfDay(zone).toInstant().toEpochMilli()
 }
 
-enum class QueryIntent { FIND, TOTAL, BIGGEST, SPLITS, INVESTMENTS, UNKNOWN }
+enum class QueryIntent { FIND, TOTAL, BIGGEST, SPLITS, INVESTMENTS, LATEST, COUNT, BREAKDOWN, COMPARE, AVERAGE, UNKNOWN }
 
 data class ParsedQuery(
     val amount: Double?,
@@ -40,7 +40,59 @@ object QueryParser {
         "shopping" to listOf("shopping", "amazon", "flipkart", "myntra", "clothes"),
         "bills" to listOf("bills", "bill", "electricity", "recharge", "rent", "wifi", "broadband", "utilities"),
         "entertainment" to listOf("entertainment", "movie", "movies", "netflix", "spotify", "bookmyshow", "games"),
-        "health" to listOf("health", "medicine", "medicines", "pharmacy", "doctor", "hospital", "medical"),
+        "health" to listOf("health", "medicine", "medicines", "pharmacy", "doctor", "hospital", "medical", "gym"),
+        "cash" to listOf("cash", "atm", "withdrawal", "withdrawals", "withdrew"),
+        "rent" to listOf("rent", "landlord", "maintenance"),
+        "education" to listOf("education", "school", "college", "fees", "course", "tuition"),
+        "investment" to listOf("investment", "investing", "zerodha", "groww", "upstox"),
+        "transfers" to listOf("transfers", "transfer", "friends", "friend"),
+    )
+
+    /**
+     * Typos, Hinglish and shorthand mapped to the words the rules understand, so "kal kitna kharcha hua" and
+     * "where did i spnt 210 aaj" work like their English versions.
+     */
+    private val NORMALIZE: List<Pair<Regex, String>> = listOf(
+        Regex("""\b(spnt|spemt|spenr|spedn|spended|spents?|spending)\b""") to "spent",
+        Regex("""\b(kharcha|kharch|kharche|kharchi|kharcho|udaya|udaye|lagaya|lagaye|diya|diye|bheja|bheje)\b""") to "spent",
+        Regex("""\b(kaha|kahan|kidhar|kaha pe|kahan pe)\b""") to "where",
+        Regex("""\b(kitna|kitne|kitni)\b""") to "how much",
+        Regex("""\b(kitni baar|kitne baar|kitni bar|kitne bar)\b""") to "how many times",
+        Regex("""\baaj\b""") to "today",
+        Regex("""\bparso\b""") to "day before yesterday",
+        Regex("""\bkal\b""") to "yesterday",
+        Regex("""\b(is|iss) (mahine|mahina|month)\b""") to "this month",
+        Regex("""\b(pichle|pichhle|last) (mahine|mahina)\b""") to "last month",
+        Regex("""\b(is|iss) (hafte|hafta|week)\b""") to "this week",
+        Regex("""\b(pichle|pichhle) (hafte|hafta)\b""") to "last week",
+        Regex("""\b(rupaye|rupay|rupees|rupee|rupya|rupiya|rs|inr)\b\.?""") to "rs",
+        Regex("""\b(tday|tdy|2day)\b""") to "today",
+        Regex("""\b(yday|ystrday|yesterdy|yestarday)\b""") to "yesterday",
+        Regex("""\b(mnth)\b""") to "month",
+        Regex("""\b(wk)\b""") to "week",
+    )
+
+    fun normalize(question: String): String {
+        var s = question.lowercase(Locale.ENGLISH).replace(Regex("""\s+"""), " ").trim()
+        for ((re, to) in NORMALIZE) s = re.replace(s, to)
+        return s
+    }
+
+    /** Words left after dates/amounts that could name a payee or note ("chai", "rahul"), for a text search fallback. */
+    fun freeWords(question: String, now: ZonedDateTime): List<String> {
+        val sb = StringBuilder(normalize(question))
+        extractDate(sb, now.toLocalDate())
+        return Regex("""[a-z][a-z0-9@._&-]{2,}""").findAll(sb.toString()).map { it.value.trim('.', '-', '_') }
+            .filter { it.length >= 3 && it !in STOP && it !in QUESTION_WORDS }.distinct().toList()
+    }
+
+    private val QUESTION_WORDS = setOf(
+        "where", "when", "who", "whom", "why", "much", "many", "times", "pay", "paid", "payment", "payments", "money",
+        "transaction", "transactions", "txn", "txns", "expense", "expenses", "show", "list", "find", "tell", "give",
+        "rs", "spent", "have", "has", "had", "for", "with", "from", "to", "at", "about", "please", "can", "could",
+        "last", "latest", "recent", "most", "top", "biggest", "how", "often", "average", "daily", "per", "compare",
+        "compared", "versus", "than", "more", "less", "break", "breakdown", "go", "went", "hua", "hue", "hai", "tha",
+        "maine", "mera", "mere", "ko", "ka", "ki", "ke", "se", "pe", "par", "mein", "me", "did", "does",
     )
 
     private val MONTHS = mapOf(
@@ -79,7 +131,7 @@ object QueryParser {
     )
 
     fun parse(question: String, now: ZonedDateTime): ParsedQuery {
-        val lower = question.lowercase(Locale.ENGLISH)
+        val lower = normalize(question)
         val sb = StringBuilder(lower)
         val range = extractDate(sb, now.toLocalDate())
         val rest = sb.toString()
@@ -95,6 +147,13 @@ object QueryParser {
         }
 
         val intent = when {
+            Regex("""\b(compare|compared|comparison|vs|versus)\b|\b(more|less) than last (week|month)\b""").containsMatchIn(lower) -> QueryIntent.COMPARE
+            Regex("""\b(how many times|how often|number of times|count of)\b""").containsMatchIn(lower) -> QueryIntent.COUNT
+            Regex("""\b(average|avg|per day|daily spend|a day)\b""").containsMatchIn(lower) -> QueryIntent.AVERAGE
+            Regex("""\b(breakdown|break down|categories|category wise|categorywise|where (did|does|do) (all )?my money go|where my money (goes|went)|top (merchants?|places?|shops?|payees?|categories)|(who|whom) (did i|do i)? ?(pay|paid) (the )?most|where (do|did) i spent (the )?most|spent most)\b""")
+                .containsMatchIn(lower) -> QueryIntent.BREAKDOWN
+            Regex("""\b(last|latest|recent|most recent|previous)\s+(payment|transaction|txn|spend|expense|purchase|debit|credit)s?\b""")
+                .containsMatchIn(lower) -> QueryIntent.LATEST
             Regex("""\b(owe|owes|owed|split|splits|splitwise)\b""").containsMatchIn(lower) -> QueryIntent.SPLITS
             Regex("""\b(invest|invested|investment|investments|portfolio|mutual funds?|sips?|stocks?|holdings?|fds?|fixed deposits?|gold|nps|ppf|epf)\b""")
                 .containsMatchIn(lower) -> QueryIntent.INVESTMENTS

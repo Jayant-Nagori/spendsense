@@ -185,9 +185,26 @@ fun SettingsScreen(onBack: (() -> Unit)? = null, onOpenImport: (() -> Unit)? = n
             }
 
             SettingsGroup("Splits") {
-                SettingsRow("Ask after each payment", "A notification asks whether you paid it all yourself.",
+                SettingsRow("Ask after each payment", "Asks what it was for and whether you paid it all yourself.",
                     onClick = { askSplit = !askSplit; settings.askSplitAfterPayment = askSplit },
                 ) { OnOffToggle(askSplit) { askSplit = it; settings.askSplitAfterPayment = it } }
+                val overlayAllowed = remember(tick) { AndroidSettings.canDrawOverlays(context) }
+                var popup by remember { mutableStateOf(settings.paymentPopup) }
+                fun setPopup(on: Boolean) {
+                    if (on && !overlayAllowed) {
+                        context.startActivity(
+                            Intent(AndroidSettings.ACTION_MANAGE_OVERLAY_PERMISSION, android.net.Uri.parse("package:" + context.packageName))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
+                    popup = on; settings.paymentPopup = on
+                }
+                SettingsRow(
+                    "Full-screen pop-up",
+                    if (overlayAllowed) "Takes over the screen right after you pay, over any app."
+                    else "Needs \"Display over other apps\". Tap to allow.",
+                    onClick = { setPopup(!(popup && overlayAllowed)) },
+                ) { OnOffToggle(popup && overlayAllowed) { setPopup(it) } }
             }
 
             SettingsGroup("AI") { ApiKeyBlock(settings) }

@@ -18,7 +18,7 @@ object CategoryGuesser {
         ),
         "Food & Dining" to listOf(
             "swiggy", "zomato", "restaurant", "cafe", "café", "domino", "pizza", "mcdonald", "kfc", "burger",
-            "starbucks", "chaayos", "haldiram", "bakery", "dhaba", "eatclub", "eatsure", "barbeque", "biryani", "kitchen",
+            "starbucks", "chaayos", "haldiram", "bakery", "dhaba", "eatclub", "eatsure", "barbeque", "biryani", "kitchen", "veg",
         ),
         "Groceries" to listOf(
             "blinkit", "zepto", "bigbasket", "instamart", "dmart", "d mart", "avenue supermart", "jiomart",
@@ -55,6 +55,17 @@ object CategoryGuesser {
         "Fees & Charges" to listOf("charges", "annual fee", "late fee", "penalty", "gst on", "interest charged", "finance charge"),
     )
 
+    /** Short or common-word keywords that must be a whole word, not just the start of one ("mall" vs "mallika"). */
+    private val WHOLE_WORDS = setOf("dhan", "wint", "cams", "kfin", "sip", "ppf", "ola", "lic", "dth", "mall", "toll", "gym", "atm", "rent", "veg")
+
+    /** Each keyword must start a word, so "dhan" (the broker) no longer matches "Aradhana Veg". */
+    private val MATCHERS: List<Pair<String, List<Regex>>> = RULES.map { (cat, words) ->
+        cat to words.map { raw ->
+            val w = raw.trim()
+            Regex("(?<![a-z0-9])" + Regex.escape(w) + if (w in WHOLE_WORDS) "(?![a-z0-9])" else "")
+        }
+    }
+
     private val PERSON_VPA = Regex(
         "^[a-z][a-z._]*[0-9]{0,12}@(ok\\w+|ybl|ibl|axl|paytm|ptyes|ptaxis|pthdfc|ptsbi|apl|upi|kotak|icici|hdfcbank|sbi|yesbank|axisbank|idfcbank|fbl|jupiteraxis|naviaxis|superyes)$",
         RegexOption.IGNORE_CASE,
@@ -62,8 +73,8 @@ object CategoryGuesser {
     private val PERSON_NAME = Regex("^[A-Za-z]+( [A-Za-z]+){1,3}$")
 
     fun guess(counterparty: String?, rawText: String): String {
-        val hay = " " + listOfNotNull(counterparty, rawText).joinToString(" ").lowercase() + " "
-        for ((cat, words) in RULES) if (words.any { hay.contains(it) }) return cat
+        val hay = listOfNotNull(counterparty, rawText).joinToString(" ").lowercase()
+        for ((cat, words) in MATCHERS) if (words.any { it.containsMatchIn(hay) }) return cat
         val cp = counterparty?.trim().orEmpty()
         if (cp.isNotEmpty() && (PERSON_VPA.matches(cp) || PERSON_NAME.matches(cp))) return "Transfers"
         return "Other"

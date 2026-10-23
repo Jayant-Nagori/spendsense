@@ -193,17 +193,21 @@ fun SplitContent(
     modifier: Modifier = Modifier,
     saveLabel: String = "Save",
     startAsSplit: Boolean = false,
+    /** When set, also asks "What was it for?" and reports the text here just before [onSave]. */
+    onNote: ((String) -> Unit)? = null,
 ) {
     val state = rememberSplitState(txn.amount, txn.isSplit || (startAsSplit && !txn.reviewed), txn.myShare, key = txn.id)
+    var note by remember(txn.id) { mutableStateOf(txn.note.orEmpty()) }
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Overline("Total")
             MoneyText(txn.amount, style = MaterialTheme.typography.displayMedium, color = MaterialTheme.colorScheme.onSurface, symbolScale = 0.5f)
             Text(splitHeadline(txn), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
+        if (onNote != null) SpendTextField(note, { note = it.take(200) }, "What was it for?")
         HairlineDivider()
         SplitEditor(state)
-        PrimaryButton(saveLabel, onClick = { onSave(state.isSplit, state.myShare) }, enabled = state.isValid, modifier = Modifier.fillMaxWidth())
+        PrimaryButton(saveLabel, onClick = { onNote?.invoke(note); onSave(state.isSplit, state.myShare) }, enabled = state.isValid, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(4.dp))
     }
 }

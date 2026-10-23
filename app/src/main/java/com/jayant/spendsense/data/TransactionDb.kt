@@ -17,7 +17,7 @@ import java.io.RandomAccessFile
 internal class TransactionDb(context: Context) :
     SQLiteOpenHelper(
         context.applicationContext, DB_NAME, prepare(context.applicationContext), null,
-        /* version = */ 2, /* minimumSupportedVersion = */ 0,
+        /* version = */ 3, /* minimumSupportedVersion = */ 0,
         /* errorHandler = */ null, /* hook = */ null, /* enableWriteAheadLogging = */ true,
     ) {
 
@@ -44,7 +44,8 @@ internal class TransactionDb(context: Context) :
                 payment_mode TEXT,
                 refund_status TEXT NOT NULL DEFAULT 'NONE',
                 refund_amount REAL,
-                refund_of_id INTEGER
+                refund_of_id INTEGER,
+                seen_sources TEXT
             )
             """.trimIndent()
         )
@@ -77,6 +78,10 @@ internal class TransactionDb(context: Context) :
             db.execSQL("ALTER TABLE txn ADD COLUMN refund_status TEXT NOT NULL DEFAULT 'NONE'")
             db.execSQL("ALTER TABLE txn ADD COLUMN refund_amount REAL")
             db.execSQL("ALTER TABLE txn ADD COLUMN refund_of_id INTEGER")
+        }
+        if (oldVersion < 3) {
+            // Which capture channels already reported this payment (SMS, app notification, email, statement).
+            db.execSQL("ALTER TABLE txn ADD COLUMN seen_sources TEXT")
         }
     }
 

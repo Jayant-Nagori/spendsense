@@ -168,8 +168,10 @@ fun TransactionRow(txn: Transaction, onClick: () -> Unit, modifier: Modifier = M
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
             val sub = buildList {
+                // What the user said it was for leads the sub-heading.
+                txn.note?.takeIf { it.isNotBlank() }?.let { add(it.lines().first()) }
                 add(if (showDate) formatDateTime(txn.timestamp) else formatTime(txn.timestamp))
-                if (!isCredit) add(txn.category) else txn.paymentMode?.let { add(it.label()) }
+                if (txn.note.isNullOrBlank()) if (!isCredit) add(txn.category) else txn.paymentMode?.let { add(it.label()) }
             }.joinToString("  ·  ")
             Text(sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }

@@ -1,5 +1,6 @@
 package com.jayant.spendsense.notify
 
+import androidx.core.app.RemoteInput
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,6 +20,8 @@ import com.jayant.spendsense.ui.components.formatRupees
 object SplitPromptNotifier {
     const val CHANNEL_ID = "payments"
     const val ACTION_FULLY_MINE = "com.jayant.spendsense.action.FULLY_MINE"
+    const val ACTION_NOTE = "com.jayant.spendsense.action.NOTE"
+    const val KEY_NOTE = "note"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -38,9 +41,10 @@ object SplitPromptNotifier {
         val nid = txn.id.toInt()
         val flags = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
-        fun splitIntent(requestCode: Int): PendingIntent {
+        fun splitIntent(requestCode: Int, startAsSplit: Boolean = false): PendingIntent {
             val i = Intent(context, SplitActivity::class.java)
                 .putExtra(SplitActivity.EXTRA_TXN_ID, txn.id)
+                .putExtra(SplitActivity.EXTRA_START_SPLIT, startAsSplit)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             return PendingIntent.getActivity(context, requestCode, i, flags)
         }
@@ -51,6 +55,19 @@ object SplitPromptNotifier {
                 .putExtra(SplitActivity.EXTRA_TXN_ID, txn.id),
             flags,
         )
+
+        // Inline reply: type what it was for straight from the notification. Must be mutable so the system can add the text.
+        val noteIntent = PendingIntent.getBroadcast(
+            context, nid * 4 + 3,
+            Intent(context, SplitActionReceiver::class.java).setAction(ACTION_NOTE)
+                .putExtra(SplitActivity.EXTRA_TXN_ID, txn.id),
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0),
+        )
+        val noteAction = NotificationCompat.Action.Builder(0, "What for?", noteIntent)
+            .addRemoteInput(RemoteInput.Builder(KEY_NOTE).setLabel("What was it for?").build())
+            .setAllowGeneratedReplies(false)
+            .build()
+        val note = txn.note?.takeIf { it.isNotBlank() }
 
         val who = txn.counterparty?.takeIf { it.isNotBlank() }
         val amount = formatRupees(txn.amount)
@@ -65,7 +82,8 @@ object SplitPromptNotifier {
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spend)
             .setContentTitle(title)
-            .setContentText("Total $amount — was it all yours?")
+            .setContentText(if (note != null) "$note · was it all yours?" else "What was it for? Was it all yours?")
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
@@ -73,8 +91,9 @@ object SplitPromptNotifier {
             .setColor(0xFFD6B97C.toInt())
             .setAutoCancel(true)
             .setContentIntent(splitIntent(nid * 4))
+            .apply { if (note == null) addAction(noteAction) }
             .addAction(0, "Fully mine", fullyMine)
-            .addAction(0, "I split it", splitIntent(nid * 4 + 2))
+            .addAction(0, "I split it", splitIntent(nid * 4 + 2, startAsSplit = true))
             .build()
 
         runCatching { NotificationManagerCompat.from(context).notify(nid, n) }

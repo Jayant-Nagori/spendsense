@@ -51,6 +51,16 @@ class Settings(context: Context) {
         get() = prefs.getBoolean("ask_split", true)
         set(v) = prefs.edit().putBoolean("ask_split", v).apply()
 
+    /** Version of the one-time category clean-up already applied to stored transactions. */
+    var categoryFixVersion: Int
+        get() = prefs.getInt("category_fix_version", 0)
+        set(v) = prefs.edit().putInt("category_fix_version", v).apply()
+
+    /** Full-screen pop-up over other apps after each payment (needs "Display over other apps"). */
+    var paymentPopup: Boolean
+        get() = prefs.getBoolean("payment_popup", true)
+        set(v) = prefs.edit().putBoolean("payment_popup", v).apply()
+
     var smsBackfillDone: Boolean
         get() = prefs.getBoolean("sms_backfill_done", false)
         set(v) = prefs.edit().putBoolean("sms_backfill_done", v).apply()

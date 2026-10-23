@@ -1,6 +1,8 @@
 package com.jayant.spendsense.data
 
+import android.content.ContentValues
 import android.content.Context
+import com.jayant.spendsense.ingest.CategoryGuesser
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.abs
@@ -22,13 +24,47 @@ class TransactionRepository private constructor(context: Context) {
      * 10 minutes — the same payment often arrives as both a bank SMS and an app notification).
      * Returns the stored row, or null when it was a duplicate.
      */
+    /**
+     * Synchronized + one DB transaction: the bank SMS and the app notification for one payment often arrive within
+     * milliseconds on different threads, and both must not pass the duplicate check before either inserts.
+     */
+    @Synchronized
     fun insertIfNew(txn: Transaction): Transaction? {
-        if (findDuplicate(txn) != null) return null
-        val id = db.writableDatabase.insert("txn", null, txn.toValues())
-        bump()
+        val w = db.writableDatabase
+        w.beginTransaction()
+        val result = try {
+            insertIfNewLocked(txn).also { w.setTransactionSuccessful() }
+        } finally {
+            w.endTransaction()
+        }
+        if (result != null) bump()
+        return result
+    }
+
+    private fun insertIfNewLocked(txn: Transaction): Transaction? {
+        findDuplicate(txn)?.let { dup ->
+            // Same payment from another channel: remember that channel (so its next payment isn't merged here too)
+            // and keep the reference number if only the new copy had one.
+            val values = ContentValues().apply {
+                put("seen_sources", (seenSources(dup.id) + sourceKey(txn)).joinToString(","))
+                if (dup.upiRef.isNullOrBlank() && !txn.upiRef.isNullOrBlank()) put("upi_ref", txn.upiRef)
+            }
+            db.writableDatabase.update("txn", values, "id = ?", arrayOf(dup.id.toString()))
+            return null
+        }
+        val values = txn.toValues().apply { put("seen_sources", sourceKey(txn)) }
+        val id = db.writableDatabase.insert("txn", null, values)
         return txn.copy(id = id)
     }
 
+    /**
+     * The stored row this transaction is another report of, or null if it is a new payment.
+     *
+     * The same payment usually arrives more than once (bank SMS + GPay notification + email + statement), often
+     * without a shared reference. Rows of the same amount within 10 minutes are treated as one payment, except:
+     * different reference numbers are always different payments, and a channel that already reported a row can
+     * only repeat it verbatim — two ₹1 payments a minute apart, each with its own SMS, stay two payments.
+     */
     fun findDuplicate(txn: Transaction): Transaction? {
         val r = db.readableDatabase
         if (!txn.upiRef.isNullOrBlank()) {
@@ -41,15 +77,25 @@ class TransactionRepository private constructor(context: Context) {
             "txn", null,
             "type = ? AND timestamp BETWEEN ? AND ?",
             arrayOf(txn.type.name, (txn.timestamp - window).toString(), (txn.timestamp + window).toString()),
-            null, null, null,
+            null, null, "ABS(timestamp - ${txn.timestamp}) ASC",
         ).use { c ->
+            val iSeen = c.getColumnIndex("seen_sources")
             while (c.moveToNext()) {
                 val t = c.toTransaction()
-                if (abs(t.amount - txn.amount) < 0.005) return t
+                if (Dedupe.isSamePayment(t, parseSeen(if (iSeen >= 0) c.getString(iSeen) else null, t), txn)) return t
             }
         }
         return null
     }
+
+    private fun seenSources(id: Long): Set<String> =
+        db.readableDatabase.query("txn", arrayOf("seen_sources", "source", "source_app"), "id = ?", arrayOf(id.toString()), null, null, null)
+            .use { c -> if (c.moveToFirst()) parseSeen(c.getString(0), get(id)) else emptySet() }
+
+    private fun parseSeen(raw: String?, t: Transaction?): Set<String> =
+        raw?.split(',')?.filter { it.isNotBlank() }?.toSet()?.takeIf { it.isNotEmpty() } ?: setOfNotNull(t?.let { sourceKey(it) })
+
+    private fun sourceKey(t: Transaction) = Dedupe.sourceKey(t)
 
     fun get(id: Long): Transaction? =
         db.readableDatabase.query("txn", null, "id = ?", arrayOf(id.toString()), null, null, null).use { c ->
@@ -65,6 +111,12 @@ class TransactionRepository private constructor(context: Context) {
     fun setSplit(id: Long, isSplit: Boolean, myShare: Double?) {
         val t = get(id) ?: return
         update(t.copy(isSplit = isSplit, myShare = if (isSplit) myShare else null, reviewed = true))
+    }
+
+    /** Saves what the payment was for (from the notification reply or the split dialog). Blank clears it. */
+    fun setNote(id: Long, note: String?) {
+        val t = get(id) ?: return
+        update(t.copy(note = note?.trim()?.take(200)?.ifBlank { null }))
     }
 
     // ---- refunds -------------------------------------------------------------------------------
@@ -126,6 +178,23 @@ class TransactionRepository private constructor(context: Context) {
         val best = candidates.maxWith(compareBy<Transaction> { score(it) }.thenBy { it.timestamp })
         // Without a user-marked return, require at least a merchant match to avoid linking random credits.
         return best.takeIf { score(it) >= 4 }
+    }
+
+    /**
+     * Re-guesses rows auto-filed as Investment by the old substring matcher (e.g. "Aradhana" hit "dhan").
+     * Rows whose text still looks like an investment keep the category. Returns how many changed.
+     */
+    fun recategorizeFalseInvestments(): Int {
+        var changed = 0
+        for (t in query("category = ?", arrayOf("Investment"))) {
+            val guess = CategoryGuesser.guess(t.counterparty, t.rawText)
+            if (guess != "Investment") {
+                db.writableDatabase.update("txn", ContentValues().apply { put("category", guess) }, "id = ?", arrayOf(t.id.toString()))
+                changed++
+            }
+        }
+        if (changed > 0) bump()
+        return changed
     }
 
     fun delete(id: Long) {

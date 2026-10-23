@@ -36,10 +36,16 @@ fun SplitSheet(txn: Transaction, onDismiss: () -> Unit, startAsSplit: Boolean = 
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         Column(Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding().imePadding()) {
-            SplitContent(txn, saveLabel = "Save", startAsSplit = startAsSplit, onSave = { isSplit, share ->
+            var note: String? = null
+            SplitContent(txn, saveLabel = "Save", startAsSplit = startAsSplit, onNote = { note = it }, onSave = { isSplit, share ->
                 haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
+                val text = note
                 scope.launch {
-                    withContext(Dispatchers.IO) { TransactionRepository.get(context).setSplit(txn.id, isSplit, share) }
+                    withContext(Dispatchers.IO) {
+                        val repo = TransactionRepository.get(context)
+                        if (text != null) repo.setNote(txn.id, text)
+                        repo.setSplit(txn.id, isSplit, share)
+                    }
                     sheetState.hide()
                     onDismiss()
                 }

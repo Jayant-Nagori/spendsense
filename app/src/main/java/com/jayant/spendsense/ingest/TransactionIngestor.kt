@@ -53,7 +53,15 @@ object TransactionIngestor {
         }
         if (live && !stored.reviewed && stored.type == TxnType.DEBIT && Settings(context).askSplitAfterPayment) {
             SplitPromptNotifier.notifyNewDebit(context, stored)
+            com.jayant.spendsense.notify.PaymentPopup.show(context, stored)
         }
         return stored
     }
+}
+
+/** One retry for transient failures (e.g. the encrypted DB briefly locked); a capture should not be lost to a blip. */
+internal inline fun ingestWithRetry(block: () -> Unit) {
+    if (runCatching(block).isSuccess) return
+    Thread.sleep(400)
+    runCatching(block)
 }

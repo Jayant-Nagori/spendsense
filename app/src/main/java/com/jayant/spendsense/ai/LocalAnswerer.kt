@@ -6,6 +6,8 @@ import com.jayant.spendsense.data.TxnType
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlin.math.abs
+import kotlin.math.max
 
 data class LocalAnswer(val text: String, val txns: List<Transaction> = emptyList(), val understood: Boolean = true)
 
@@ -18,15 +20,32 @@ class LocalAnswerer(
 
     fun answer(question: String): LocalAnswer {
         val now = clock()
-        val q = QueryParser.parse(question, now)
+        val q = withFreeText(QueryParser.parse(question, now), question, now)
+        val today = now.toLocalDate()
         return when (q.intent) {
             QueryIntent.SPLITS -> splits()
             QueryIntent.INVESTMENTS -> investments(question)
-            QueryIntent.TOTAL -> total(q, now.toLocalDate())
-            QueryIntent.BIGGEST -> biggest(q, now.toLocalDate())
-            QueryIntent.FIND -> find(q)
+            QueryIntent.TOTAL -> total(q, today)
+            QueryIntent.BIGGEST -> biggest(q, today)
+            QueryIntent.FIND -> find(q, today)
+            QueryIntent.LATEST -> latest(q)
+            QueryIntent.COUNT -> count(q, today)
+            QueryIntent.BREAKDOWN -> breakdown(q, today)
+            QueryIntent.COMPARE -> compare(q, today)
+            QueryIntent.AVERAGE -> average(q, today)
             QueryIntent.UNKNOWN -> LocalAnswer(HELP, understood = false)
         }
+    }
+
+    /**
+     * No category or "on/at/to X" phrase: try leftover words against payees, notes and messages, so
+     * "chai this week" or "rahul" work. An otherwise unknown question with a matching word becomes a search.
+     */
+    private fun withFreeText(q: ParsedQuery, question: String, now: ZonedDateTime): ParsedQuery {
+        if (q.categoryKey != null || q.textTerm != null) return q
+        if (q.intent in setOf(QueryIntent.SPLITS, QueryIntent.INVESTMENTS)) return q
+        val hit = QueryParser.freeWords(question, now).firstOrNull { w -> data.search(text = w, limit = 1).isNotEmpty() } ?: return q
+        return q.copy(textTerm = hit, intent = if (q.intent == QueryIntent.UNKNOWN) QueryIntent.FIND else q.intent)
     }
 
     private fun fetch(q: ParsedQuery, range: DateRange?, type: TxnType?, useAmount: Boolean): List<Transaction> {
@@ -44,8 +63,9 @@ class LocalAnswerer(
         }
     }
 
-    private fun find(q: ParsedQuery): LocalAnswer {
+    private fun find(q: ParsedQuery, today: LocalDate): LocalAnswer {
         val list = fetch(q, q.range, q.type, useAmount = true)
+        if (list.isEmpty() && q.amount != null) return amountMiss(q, q.amount, today)
         val what = buildString {
             append(if (q.amount != null) "of ${Money.inr(q.amount)}" else "")
             q.categoryKey?.let { append(" in $it") }
@@ -138,6 +158,155 @@ class LocalAnswerer(
         )
     }
 
+    // ---- "where did I spend ₹210" when there is no exact match -----------------------------------------------
+
+    private fun amountMiss(q: ParsedQuery, amount: Double, today: LocalDate): LocalAnswer {
+        val label = Money.inr(amount)
+        val range = q.range
+        val whenText = range?.let { " " + periodText(it) } ?: ""
+
+        // Same amount a few days either side (dates get mixed up), then the most recent one ever.
+        if (range != null) {
+            val wide = DateRange(range.from.minusDays(3), range.toExclusive.plusDays(3), "")
+            val near = fetch(q, wide, q.type, useAmount = true)
+            if (near.isNotEmpty()) {
+                val t = near.first()
+                return LocalAnswer("No $label payment$whenText, but there's one close by: ${line(t)}.", near.take(5))
+            }
+        }
+
+        // Look at what was paid in the period (or the last 7 days) for near amounts and combinations.
+        val poolRange = range ?: DateRange(today.minusDays(6), today.plusDays(1), "the last 7 days")
+        val pool = fetch(q.copy(amount = null), poolRange, q.type ?: TxnType.DEBIT, useAmount = false)
+        val poolText = periodText(poolRange)
+
+        val rounding = pool.filter { abs(it.amount - amount) <= 2.0 }.sortedBy { abs(it.amount - amount) }
+        if (rounding.isNotEmpty()) {
+            return LocalAnswer("Nothing for exactly $label$whenText. Did you mean ${line(rounding.first())}?", rounding.take(5))
+        }
+        combo(pool, amount)?.let { parts ->
+            val sum = parts.joinToString(" + ") { "${Money.inr(it.amount)} at ${it.counterparty ?: "Unknown"}" }
+            return LocalAnswer("No single $label payment $poolText, but these add up to $label: $sum.", parts)
+        }
+        val tol = max(10.0, amount * 0.05)
+        val close = pool.filter { abs(it.amount - amount) <= tol }.sortedBy { abs(it.amount - amount) }
+        if (close.isNotEmpty()) {
+            return LocalAnswer("Nothing for exactly $label $poolText. Closest: ${close.take(3).joinToString("; ") { line(it) }}.", close.take(5))
+        }
+        if (range != null) {
+            val ever = fetch(q, null, q.type, useAmount = true)
+            if (ever.isNotEmpty()) {
+                return LocalAnswer("No $label payment$whenText. The last $label payment I have is ${line(ever.first())}.", ever.take(5))
+            }
+        }
+
+        val fix = captureFix()
+        if (pool.isEmpty()) {
+            return LocalAnswer("I have no payments recorded $poolText at all, so that $label payment wasn't captured.$fix")
+        }
+        return LocalAnswer(
+            "No $label payment $poolText. Here's what I did record ${poolText}, in case it's one of these.$fix",
+            pool.take(6),
+        )
+    }
+
+    private fun captureFix(): String {
+        val off = data.captureIssues()
+        val why = if (off.isEmpty()) "" else " ${off.joinToString(" and ").replaceFirstChar { it.uppercase() }} ${if (off.size == 1) "is" else "are"} off in Settings → Capture."
+        return "$why You can add a missed payment with + ADD on Home."
+    }
+
+    /** Two or three payments that add up to [amount] (within ₹1), smallest set first. */
+    private fun combo(pool: List<Transaction>, amount: Double): List<Transaction>? {
+        val items = pool.filter { it.amount < amount }.take(40)
+        for (i in items.indices) for (j in i + 1 until items.size) {
+            if (abs(items[i].amount + items[j].amount - amount) <= 1.0) return listOf(items[i], items[j])
+        }
+        for (i in items.indices) for (j in i + 1 until items.size) for (k in j + 1 until items.size) {
+            if (abs(items[i].amount + items[j].amount + items[k].amount - amount) <= 1.0) return listOf(items[i], items[j], items[k])
+        }
+        return null
+    }
+
+    private fun line(t: Transaction): String =
+        "${Money.inr(t.amount)} to ${t.counterparty ?: "Unknown"} on ${Ist.human(t.timestamp, zone)}" +
+            (t.note?.takeIf { it.isNotBlank() }?.let { " (\"$it\")" } ?: "")
+
+    // ---- more question types ------------------------------------------------------------------------------
+
+    private fun latest(q: ParsedQuery): LocalAnswer {
+        val type = q.type ?: TxnType.DEBIT
+        val list = fetch(q, q.range, type, useAmount = false)
+        if (list.isEmpty()) return LocalAnswer("I don't have any ${if (type == TxnType.CREDIT) "money received" else "payments"} recorded yet.${captureFix()}")
+        return LocalAnswer("Your last ${if (type == TxnType.CREDIT) "credit" else "payment"} was ${line(list.first())}.", list.take(5))
+    }
+
+    private fun count(q: ParsedQuery, today: LocalDate): LocalAnswer {
+        val range = q.range ?: DateRange(today.withDayOfMonth(1), today.plusDays(1), "this month")
+        val list = fetch(q, range, q.type ?: TxnType.DEBIT, useAmount = q.amount != null)
+        val subject = q.categoryKey ?: q.textTerm?.let { "\"$it\"" } ?: "payments"
+        if (list.isEmpty()) return LocalAnswer("No $subject ${periodText(range)}.")
+        val n = list.size
+        return LocalAnswer(
+            "$n time${if (n == 1) "" else "s"} ${periodText(range)} for $subject, ${Money.inr(list.sumOf { it.effectiveAmount })} in total.",
+            list.take(8),
+        )
+    }
+
+    private fun breakdown(q: ParsedQuery, today: LocalDate): LocalAnswer {
+        val range = q.range ?: DateRange(today.withDayOfMonth(1), today.plusDays(1), "this month")
+        val list = fetch(q, range, TxnType.DEBIT, useAmount = false).filter { !it.isRefundCredit }
+        if (list.isEmpty()) return LocalAnswer("No spending recorded ${periodText(range)}.")
+        val total = list.sumOf { it.effectiveAmount }
+        val byPlace = Regex("""\b(merchant|place|shop|payee|who|whom)""").containsMatchIn(q.textTerm.orEmpty()) || false
+        val groups = list.groupBy { if (byPlace) (it.counterparty ?: "Unknown") else it.category }
+            .mapValues { (_, v) -> v.sumOf { it.effectiveAmount } }
+            .entries.sortedByDescending { it.value }.take(5)
+        val parts = groups.joinToString("\n") { (k, v) -> "- $k: ${Money.inr(v)} (${Math.round(v * 100 / total)}%)" }
+        val topPayees = list.groupBy { it.counterparty ?: "Unknown" }.mapValues { (_, v) -> v.sumOf { it.effectiveAmount } }
+            .entries.maxByOrNull { it.value }
+        val payeeLine = topPayees?.let { "\nMost money went to ${it.key} (${Money.inr(it.value)})." } ?: ""
+        return LocalAnswer(
+            "You spent ${Money.inr(total)} ${periodText(range)}:\n$parts$payeeLine",
+            list.sortedByDescending { it.effectiveAmount }.take(5),
+        )
+    }
+
+    private fun compare(q: ParsedQuery, today: LocalDate): LocalAnswer {
+        val weekly = Regex("week").containsMatchIn(q.range?.label.orEmpty()) || q.range?.let { it.toExclusive.toEpochDay() - it.from.toEpochDay() <= 7 } == true
+        val (cur, prev) = if (weekly) {
+            val monday = today.with(java.time.DayOfWeek.MONDAY)
+            val days = today.toEpochDay() - monday.toEpochDay()
+            DateRange(monday, today.plusDays(1), "this week") to DateRange(monday.minusWeeks(1), monday.minusWeeks(1).plusDays(days + 1), "the same days last week")
+        } else {
+            val first = today.withDayOfMonth(1)
+            val prevFirst = first.minusMonths(1)
+            val prevEnd = minOf(prevFirst.plusDays((today.dayOfMonth).toLong()), first)
+            DateRange(first, today.plusDays(1), "this month") to DateRange(prevFirst, prevEnd, "the same days last month")
+        }
+        val a = fetch(q, cur, TxnType.DEBIT, useAmount = false).sumOf { it.effectiveAmount }
+        val b = fetch(q, prev, TxnType.DEBIT, useAmount = false).sumOf { it.effectiveAmount }
+        val subject = q.categoryKey?.let { " on $it" } ?: q.textTerm?.let { " on $it" } ?: ""
+        val diff = a - b
+        val verdict = when {
+            b < 1 && a < 1 -> "No spending$subject in either period."
+            b < 1 -> "Nothing$subject in ${prev.label} to compare with."
+            abs(diff) < 1 -> "Exactly the same as ${prev.label}."
+            diff > 0 -> "${Money.inr(diff)} more (${Math.round(diff * 100 / b)}% up) than ${prev.label} (${Money.inr(b)})."
+            else -> "${Money.inr(-diff)} less (${Math.round(-diff * 100 / b)}% down) than ${prev.label} (${Money.inr(b)})."
+        }
+        return LocalAnswer("You've spent ${Money.inr(a)}$subject ${cur.label}. $verdict")
+    }
+
+    private fun average(q: ParsedQuery, today: LocalDate): LocalAnswer {
+        val range = q.range ?: DateRange(today.withDayOfMonth(1), today.plusDays(1), "this month")
+        val list = fetch(q, range, TxnType.DEBIT, useAmount = false)
+        val end = minOf(range.toExclusive, today.plusDays(1))
+        val days = max(1L, end.toEpochDay() - range.from.toEpochDay())
+        val total = list.sumOf { it.effectiveAmount }
+        return LocalAnswer("You spend about ${Money.inr(total / days)} a day ${periodText(range)} (${Money.inr(total)} over $days day${if (days == 1L) "" else "s"}).")
+    }
+
     private fun periodText(r: DateRange): String = when {
         r.label.startsWith("this ") || r.label.startsWith("last ") || r.label == "today" || r.label == "yesterday" -> r.label
         r.label.startsWith("the ") -> "in ${r.label}"
@@ -145,7 +314,8 @@ class LocalAnswerer(
     }
 
     companion object {
-        const val HELP = "I can answer a few things offline, like \"Where did I spend ₹254 on 12 Oct?\", " +
-            "\"How much did I spend this week?\", \"How much on food last month?\" or \"What's my biggest expense this month?\"."
+        const val HELP = "Ask me things like \"Where did I spend ₹210 today?\", \"How much on food this month?\", " +
+            "\"Where did my money go last month?\", \"How many times did I order Swiggy?\", \"Last payment\", " +
+            "\"This month vs last month\" or \"Kal kitna kharcha hua?\". It all works offline."
     }
 }

@@ -24,10 +24,84 @@ class LocalAnswererTest {
         assertEquals(listOf(3L), a.txns.map { it.id })
     }
 
-    @Test fun noMatchSaysSo() {
+    @Test fun noMatchSaysSoAndShowsWhatWasRecorded() {
         val a = answerer.answer("where did I spend 9999 yesterday")
-        assertTrue(a.txns.isEmpty())
-        assertTrue(a.text.contains("couldn't find"))
+        assertTrue(a.text, a.text.startsWith("No ₹9,999 payment yesterday"))
+        assertEquals(listOf(3L), a.txns.map { it.id }) // Zomato was the only payment yesterday
+    }
+
+    // ---- smarter offline answers ----
+
+    private fun with(vararg extra: com.jayant.spendsense.data.Transaction) =
+        LocalAnswerer(FakeData(txns = extra.toList())) { NOW }
+
+    @Test fun twoPaymentsThatAddUp() {
+        val a = with(
+            txn(10, 120.0, "Chaayos", millis(2026, 10, 22, 9)),
+            txn(11, 90.0, "Blinkit", millis(2026, 10, 22, 11)),
+            txn(12, 500.0, "Croma", millis(2026, 10, 22, 12)),
+        ).answer("where did i spent 210 today")
+        assertTrue(a.text, a.text.contains("add up to ₹210"))
+        assertEquals(setOf(10L, 11L), a.txns.map { it.id }.toSet())
+    }
+
+    @Test fun sameAmountOnANearbyDay() {
+        val a = with(txn(10, 210.0, "Chai Point", millis(2026, 10, 21, 18))).answer("where did I spend 210 today")
+        assertTrue(a.text, a.text.contains("close by") && a.text.contains("Chai Point"))
+    }
+
+    @Test fun roundingDifference() {
+        val a = with(txn(10, 209.0, "Swiggy", millis(2026, 10, 22, 13))).answer("where did I spend 210 today")
+        assertTrue(a.text, a.text.contains("Did you mean ₹209"))
+    }
+
+    @Test fun nothingCapturedTodayExplainsWhy() {
+        val a = with(txn(10, 99.0, "Old", millis(2026, 9, 1))).answer("where did I spend 210 today")
+        assertTrue(a.text, a.text.contains("no payments recorded today") && a.text.contains("+ ADD"))
+    }
+
+    @Test fun hinglishAndTypos() {
+        val l = with(txn(10, 210.0, "Chai Point", millis(2026, 10, 22, 9)))
+        assertEquals(listOf(10L), l.answer("aaj 210 kaha kharcha kiya").txns.map { it.id })
+        assertEquals(listOf(10L), l.answer("where did i spnt 210 tday").txns.map { it.id })
+        assertTrue(l.answer("aaj kitna kharcha hua").text.contains("₹210"))
+    }
+
+    @Test fun payeeWordWithoutPreposition() {
+        val a = with(
+            txn(10, 40.0, "Chai Wala", millis(2026, 10, 21, 9)),
+            txn(11, 30.0, "Chai Wala", millis(2026, 10, 22, 9)),
+            txn(12, 900.0, "Croma", millis(2026, 10, 22, 12)),
+        ).answer("chai this week")
+        assertEquals(setOf(10L, 11L), a.txns.map { it.id }.toSet())
+    }
+
+    @Test fun lastPayment() {
+        val a = answerer.answer("what was my last payment")
+        assertEquals(5L, a.txns.first().id)
+    }
+
+    @Test fun howManyTimes() {
+        val a = with(
+            txn(10, 300.0, "Swiggy", millis(2026, 10, 3), category = "Food"),
+            txn(11, 250.0, "Swiggy", millis(2026, 10, 9), category = "Food"),
+        ).answer("how many times did I order swiggy this month")
+        assertTrue(a.text, a.text.startsWith("2 times"))
+    }
+
+    @Test fun breakdown() {
+        val a = answerer.answer("where did my money go this month")
+        assertTrue(a.text, a.text.contains("Shopping: ₹5,000"))
+    }
+
+    @Test fun compareWithLastMonth() {
+        val a = answerer.answer("this month vs last month")
+        assertTrue(a.text, a.text.startsWith("You've spent ₹6,804 this month"))
+    }
+
+    @Test fun dailyAverage() {
+        val a = answerer.answer("average daily spend this month")
+        assertTrue(a.text, a.text.contains("a day"))
     }
 
     @Test fun totalTodayUsesShare() {

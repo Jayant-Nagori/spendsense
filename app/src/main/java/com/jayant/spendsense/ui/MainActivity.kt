@@ -98,6 +98,12 @@ private val RouteSaver = Saver<Route, String>(
 )
 
 class MainActivity : FragmentActivity() {
+    override fun onResume() {
+        super.onResume()
+        // Payments queued while the phone was locked and the process was dead get their pop-up now.
+        com.jayant.spendsense.notify.PaymentPopup.onUnlock(this)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         SecureWindow.apply(this)
@@ -116,26 +122,10 @@ class MainActivity : FragmentActivity() {
             }
             SpendSenseTheme(dark) {
                 AppLockGate(this) {
-                    NotificationPermissionOnFirstLaunch()
-                    AppShell()
+                    var setupDone by remember { mutableStateOf(isSetupDone(this@MainActivity)) }
+                    if (setupDone) AppShell() else SetupScreen(onDone = { setupDone = true })
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun NotificationPermissionOnFirstLaunch() {
-    val context = LocalContext.current
-    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return@LaunchedEffect
-        val prefs = context.getSharedPreferences("ui_prefs", android.content.Context.MODE_PRIVATE)
-        val asked = prefs.getBoolean("asked_post_notifications", false)
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-        if (!asked && !granted) {
-            prefs.edit().putBoolean("asked_post_notifications", true).apply()
-            launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 }

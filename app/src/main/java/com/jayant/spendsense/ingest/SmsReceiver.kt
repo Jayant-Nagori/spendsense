@@ -21,7 +21,7 @@ class SmsReceiver : BroadcastReceiver() {
                     val body = parts.joinToString("") { it.messageBody.orEmpty() }
                     val ts = parts.first().timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
                     val parsed = TransactionParser.parseSms(sender, body, ts) ?: continue
-                    runCatching { TransactionIngestor.ingest(app, parsed, TxnSource.SMS, sender, body, live = true) }
+                    ingestWithRetry { TransactionIngestor.ingest(app, parsed, TxnSource.SMS, sender, body, live = true) }
                 }
             } finally {
                 pending.finish()

@@ -19,7 +19,7 @@ object TransactionParser {
             "declined", "\\bfailed\\b", "unsuccessful", "could not be", "was not successful", "insufficient",
             "pre-?approved", "loan offer", "apply now", "eligible for", "get upto", "get up to", "offer valid",
             "\\bkyc\\b", "mandate (has been )?(created|registered|set up)", "autopay (is )?(scheduled|upcoming|set)",
-            "upcoming (payment|debit)", "reminder", "recharge now", "pay now",
+            "upcoming (payment|debit)", "if (any amount )?debited", "reminder", "recharge now", "pay now",
         ).joinToString("|"),
         IC,
     )
@@ -35,7 +35,7 @@ object TransactionParser {
         IC,
     )
 
-    private val AMOUNT = Regex("(?:rs\\.?|inr|₹)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", IC)
+    private val AMOUNT = Regex("(?:rs\\.?:?|inr|₹)\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)", IC)
     private val AMOUNT_BARE = Regex(
         "(?:debited by|credited by|debited for|credited with|credited for|debited with|withdrawn|txn of|transaction of|purchase of)\\s*(?:rs\\.?|inr|₹)?\\s*([0-9][0-9,]*(?:\\.[0-9]{1,2})?)",
         IC,
@@ -55,10 +55,11 @@ object TransactionParser {
         "(?:upi\\s*ref(?:erence)?(?:\\s*no\\.?)?|upi\\s*txn\\s*id|ref(?:erence)?\\s*(?:no\\.?|number|#|id)?|refno|rrn|utr(?:\\s*no\\.?)?|txn\\s*(?:id|no\\.?)|transaction\\s*(?:id|no\\.?)|imps\\s*ref)\\s*[:.\\-]?\\s*([A-Za-z0-9]{6,})",
         IC,
     )
+    private val BRACKET_NAME = Regex("^\\s*\\(\\s*([A-Za-z][A-Za-z .&'-]{1,40}?)\\s*\\)")
     private val VPA = Regex("\\b([a-zA-Z0-9._\\-]{2,}@[a-zA-Z]{2,})\\b")
     private const val NAME = "([A-Za-z0-9][A-Za-z0-9 .&'_*\\-/]{1,45}?)"
     private const val STOP =
-        "(?=\\s+(?:on|via|using|ref|refno|upi|txn|avl|avbl|from|by|dated|at|info|for|is|was|has|with|avl|not)\\b|\\s+-|\\s*[.,;:(]|\\s*$)"
+        "(?=\\s+in\\s+your\\b|\\s+(?:on|via|using|ref|refno|upi|txn|avl|avbl|from|by|dated|at|info|for|is|was|has|with|avl|not)\\b|\\s+-|\\s*[.,;:(]|\\s*$)"
     private val AT_MERCHANT = Regex("\\b(?:at|@)\\s+$NAME$STOP", IC)
     private val TO_NAME = Regex("\\b(?:paid to|sent to|transferred to|trf to|transfer to|to vpa|towards|to)\\s+$NAME$STOP", IC)
     private val ON_MERCHANT = Regex("\\bon\\s+(?!\\d|date\\b|your\\b)$NAME$STOP", IC)
@@ -164,6 +165,8 @@ object TransactionParser {
             isRefund -> TxnType.CREDIT
             Regex("\\b(received|credited|got|added to)\\b", IC).containsMatchIn(combined) && !debitish.containsMatchIn(combined) -> TxnType.CREDIT
             debitish.containsMatchIn(combined) -> TxnType.DEBIT
+            // Tap-to-pay wallets often post just "<merchant> / ₹180.00 with Visa ••1234".
+            packageName in CARD_WALLET_PACKAGES -> TxnType.DEBIT
             else -> return null
         }
         val mode = when (packageName) {
@@ -174,7 +177,8 @@ object TransactionParser {
         return ParsedTransaction(
             amount = amount,
             type = type,
-            counterparty = findCounterparty(combined, type),
+            counterparty = findCounterparty(combined, type)
+                ?: title?.trim()?.takeIf { packageName in CARD_WALLET_PACKAGES && it.length >= 2 && AMOUNT.find(it) == null }?.let(::prettify),
             account = findAccount(combined),
             bank = BANK_APP_PACKAGES[packageName] ?: bankFromText(combined),
             upiRef = findRef(combined),
@@ -221,6 +225,8 @@ object TransactionParser {
     private fun detectMode(text: String): PaymentMode = when {
         Regex("\\b(atm|cash withdrawal|withdrawn)\\b", IC).containsMatchIn(text) -> PaymentMode.CASH
         Regex("\\b(upi|vpa)\\b", IC).containsMatchIn(text) || VPA.containsMatchIn(text) -> PaymentMode.UPI
+        // HDFC-style "Sent Rs.X From ... To ... Ref <12-digit RRN>" omits the word UPI.
+        Regex("\\b(sent|received)\\b.*\\bref\\s*:?\\s*\\d{12}\\b", IC).containsMatchIn(text) -> PaymentMode.UPI
         Regex("\\b(card|pos|contactless|tap to pay)\\b", IC).containsMatchIn(text) -> PaymentMode.CARD
         Regex("\\b(neft|imps|rtgs|net ?banking|netbanking)\\b", IC).containsMatchIn(text) -> PaymentMode.NETBANKING
         Regex("\\bwallet\\b", IC).containsMatchIn(text) -> PaymentMode.WALLET
@@ -254,7 +260,12 @@ object TransactionParser {
         } else {
             Regex("\\b(?:from|by|vpa)\\s+(?:vpa\\s+)?([a-zA-Z0-9._\\-]{2,}@[a-zA-Z]{2,})", IC)
         }
-        vpaRegex.find(text)?.let { return it.groupValues[1].lowercase() }
+        vpaRegex.find(text)?.let { m ->
+            // Banks often add the payee's name right after the UPI ID: "to VPA chai@okaxis (CHAI WALA)".
+            BRACKET_NAME.find(text.substring(m.range.last + 1))?.groupValues?.get(1)?.let(::cleanName)
+                ?.takeIf { !isNoise(it) }?.let { return it }
+            return m.groupValues[1].lowercase()
+        }
 
         val candidates = buildList {
             if (type == TxnType.DEBIT) {

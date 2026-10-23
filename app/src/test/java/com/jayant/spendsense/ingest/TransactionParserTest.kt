@@ -230,4 +230,15 @@ class TransactionParserTest {
         assertEquals("Other", CategoryGuesser.guess("XYZ123", ""))
         assertTrue(CategoryGuesser.CATEGORIES.contains("Other"))
     }
+
+    @Test fun keywordsMatchWholeWordsNotInsideNames() {
+        // "dhan" (broker) used to match inside "aradhana"
+        assertEquals("Food & Dining", CategoryGuesser.guess("Aradhana Veg", "UPI payment to ARADHANA VEG"))
+        assertEquals("Investment", CategoryGuesser.guess("DHAN", "paid to dhan@icici"))
+        assertEquals("Investment", CategoryGuesser.guess("Wint Wealth", ""))
+        assertEquals("Transfers", CategoryGuesser.guess("Mallika Sen", ""))
+        assertEquals("Transfers", CategoryGuesser.guess("Twinkle Sharma", ""))
+        assertEquals("Investment", CategoryGuesser.guess("zerodhabroking@hdfcbank", ""))
+        assertEquals("Transport", CategoryGuesser.guess("OLA", "Paid Rs 230 to OLA via UPI"))
+    }
 }

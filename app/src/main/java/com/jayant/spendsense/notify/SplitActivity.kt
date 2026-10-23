@@ -31,7 +31,10 @@ import kotlinx.coroutines.withContext
 
 /** Dialog-style activity opened from the split notification. Extra: EXTRA_TXN_ID (Long). */
 class SplitActivity : FragmentActivity() {
-    companion object { const val EXTRA_TXN_ID = "txn_id" }
+    companion object {
+        const val EXTRA_TXN_ID = "txn_id"
+        const val EXTRA_START_SPLIT = "start_split"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +52,7 @@ class SplitActivity : FragmentActivity() {
         window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 
         val txnId = intent.getLongExtra(EXTRA_TXN_ID, -1L)
+        val startAsSplit = intent.getBooleanExtra(EXTRA_START_SPLIT, false)
         setContent {
             SpendSenseTheme {
                 AppLockGate(this) {
@@ -60,10 +64,14 @@ class SplitActivity : FragmentActivity() {
                     }
                     txn?.let { t ->
                         Column(Modifier.fillMaxWidth().padding(20.dp)) {
-                            SplitContent(t, saveLabel = "Save", onSave = { isSplit, share ->
+                            var note by remember { mutableStateOf<String?>(null) }
+                            SplitContent(t, saveLabel = "Save", startAsSplit = startAsSplit, onNote = { note = it }, onSave = { isSplit, share ->
                                 val app = applicationContext
+                                val text = note
                                 Thread {
-                                    TransactionRepository.get(app).setSplit(t.id, isSplit, share)
+                                    val repo = TransactionRepository.get(app)
+                                    if (text != null) repo.setNote(t.id, text)
+                                    repo.setSplit(t.id, isSplit, share)
                                     NotificationManagerCompat.from(app).cancel(t.id.toInt())
                                 }.start()
                                 finish()
