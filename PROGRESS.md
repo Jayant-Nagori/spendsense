@@ -28,3 +28,9 @@ r-wealth (redesign/wealth: portfolio/*), r-ask (redesign/ask: ai screen, setting
 - [ ] merge redesign/home, redesign/wealth, redesign/ask (wire SettingsScreen(onBack) if needed)
 - [ ] build + tests, emulator screenshots of all screens, fix leftovers
 - [ ] release APK → ~/spendsense-dist/SpendSense.apk, serve on LAN (python3 -m http.server 8765 --bind $(ipconfig getifaddr en0)), tell user with URL
+
+## Phase 3 — imports (user: "add bank statement pdf import, gmail import etc")
+Deps + R8 rules committed on main (d6e3bd8). Agents:
+~/spendsense-worktrees/i-stmt (imports/stmt: imports/statement/**, imports/ImportScreen.kt, ShareImportActivity + manifest entry)
+~/spendsense-worktrees/i-mail (imports/mail: imports/email/** — EmailImportSection(), Gmail IMAP + App Password; JobService manifest entry to add by orchestrator)
+- [ ] merge imports/stmt + imports/mail after redesign merges; wire ImportScreen(emailSection = { EmailImportSection() }) into Settings ("Import" row) and Home; add JobService to manifest
