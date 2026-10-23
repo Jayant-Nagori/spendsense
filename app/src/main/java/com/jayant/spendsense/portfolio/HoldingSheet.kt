@@ -6,51 +6,43 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
+import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SwitchDefaults
-import androidx.compose.material3.FilterChipDefaults
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.text.input.TextFieldLineLimits
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
@@ -63,14 +55,20 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.jayant.spendsense.data.AssetType
 import com.jayant.spendsense.data.Investment
+import com.jayant.spendsense.ui.components.GhostButton
+import com.jayant.spendsense.ui.components.NeoPopSurface
+import com.jayant.spendsense.ui.components.PrimaryButton
+import com.jayant.spendsense.ui.theme.spend
 
-
-/** Rounded, filled text field in the sheet's quiet style: no heavy outline until focused. */
+/** Square text field: 1dp hairline border, white when focused, near-square corners. */
 @Composable
 private fun SheetField(
     value: String,
@@ -106,26 +104,65 @@ private fun SheetField(
         minLines = minLines,
         maxLines = maxLines,
         keyboardOptions = keyboardOptions,
-        shape = MaterialTheme.shapes.medium,
+        shape = RoundedCornerShape(2.dp),
         colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = c.surfaceContainerHigh,
-            unfocusedContainerColor = c.surfaceContainerHigh,
-            errorContainerColor = c.surfaceContainerHigh,
-            unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-            focusedBorderColor = c.primary,
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            errorContainerColor = Color.Transparent,
+            unfocusedBorderColor = MaterialTheme.spend.hairline.copy(alpha = 0.22f),
+            focusedBorderColor = c.onSurface,
             errorBorderColor = c.error,
-            focusedLabelColor = c.primary,
-            cursorColor = c.primary,
+            focusedLabelColor = c.onSurface,
+            unfocusedLabelColor = c.onSurfaceVariant,
+            cursorColor = c.onSurface,
+            focusedPlaceholderColor = c.outline,
+            unfocusedPlaceholderColor = c.outline,
         ),
     )
 }
 
 @Composable
 private fun SheetLabel(text: String) {
-    SectionLabel(text, Modifier.padding(top = 10.dp))
+    SectionLabel(text, Modifier.padding(top = 14.dp))
+}
+
+/** Square NeoPOP toggle: selected = white face / black text, unselected = black face / hairline. */
+@Composable
+private fun SquareToggle(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = MaterialTheme.colorScheme
+    NeoPopSurface(
+        color = if (selected) c.onBackground else c.background,
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 52.dp),
+        depth = 3.dp,
+        edge = if (selected) Color(0xFF8C8C8C) else Color(0xFF3A3A3A),
+        border = if (selected) null else Color.White.copy(alpha = 0.22f),
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (selected) c.background else c.onSurface,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+        )
+    }
 }
 
 private val AMOUNT_KEYS = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+
+@Composable
+private fun SheetDragHandle() {
+    Box(
+        Modifier.padding(vertical = 12.dp).width(32.dp).height(3.dp)
+            .background(MaterialTheme.colorScheme.outline, RoundedCornerShape(2.dp)),
+    )
+}
 
 /** Add (id == 0) or edit a holding. [onSave] receives a validated Investment. */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -152,7 +189,9 @@ fun HoldingSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        dragHandle = { SheetDragHandle() },
     ) {
         Column(
             Modifier
@@ -165,40 +204,29 @@ fun HoldingSheet(
         ) {
             Text(
                 if (isEdit) "Edit holding" else "Add holding",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.displaySmall,
             )
 
             SheetLabel("What is it")
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                maxItemsInEachRow = 3,
+            ) {
                 AssetType.values().forEach { t ->
-                    val chipSource = remember { MutableInteractionSource() }
-                    FilterChip(
+                    SquareToggle(
+                        text = t.label,
                         selected = form.type == t,
                         onClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.SegmentFrequentTick)
                             change({ it.copy(type = t) })
                         },
-                        label = { Text(t.label) },
-                        leadingIcon = { Icon(assetIcon(t), null, Modifier.size(18.dp)) },
-                        interactionSource = chipSource,
-                        shape = CircleShape,
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-                            selectedLabelColor = MaterialTheme.colorScheme.primary,
-                            selectedLeadingIconColor = MaterialTheme.colorScheme.primary,
-                        ),
-                        border = FilterChipDefaults.filterChipBorder(
-                            enabled = true,
-                            selected = form.type == t,
-                            borderColor = MaterialTheme.colorScheme.outlineVariant,
-                            selectedBorderColor = MaterialTheme.colorScheme.primary,
-                        ),
-                        modifier = Modifier.pressScale(chipSource, 0.95f),
+                        modifier = Modifier.weight(1f),
                     )
                 }
             }
 
+            SheetLabel("Details")
             SheetField(
                 value = form.name,
                 onValueChange = { v -> change({ it.copy(name = v) }, FormField.NAME) },
@@ -287,31 +315,28 @@ fun HoldingSheet(
                     Text(
                         "Estimated current value: ${formatInr(estimate ?: 0.0)} (saved when you leave current value blank)",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
 
             SheetLabel("Recurring")
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("SIP / recurring investment", style = MaterialTheme.typography.titleSmall)
-                    Text(
-                        "I invest a fixed amount regularly",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = form.isSip,
-                    onCheckedChange = { v ->
-                        haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
-                        change({ it.copy(isSip = v) }, FormField.SIP)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SquareToggle(
+                    "One-time", selected = !form.isSip,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.ToggleOff)
+                        change({ it.copy(isSip = false) }, FormField.SIP)
                     },
-                    colors = SwitchDefaults.colors(
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    ),
+                    modifier = Modifier.weight(1f),
+                )
+                SquareToggle(
+                    "Monthly SIP", selected = form.isSip,
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.ToggleOn)
+                        change({ it.copy(isSip = true) }, FormField.SIP)
+                    },
+                    modifier = Modifier.weight(1f),
                 )
             }
             AnimatedVisibility(visible = form.isSip, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
@@ -340,7 +365,7 @@ fun HoldingSheet(
             )
 
             PrimaryButton(
-                text = if (isEdit) "Save changes" else "Add holding",
+                text = "Save",
                 onClick = {
                     when (val r = form.validate(System.currentTimeMillis())) {
                         is FormResult.Valid -> onSave(r.investment)
@@ -350,16 +375,15 @@ fun HoldingSheet(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
             )
 
             if (isEdit && onDelete != null) {
-                QuietButton(
+                GhostButton(
                     text = "Delete holding",
                     onClick = { confirmDelete = true },
-                    icon = Icons.Rounded.Delete,
                     color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             Spacer(Modifier.height(16.dp))
@@ -367,17 +391,27 @@ fun HoldingSheet(
     }
 
     if (confirmDelete && initial != null && onDelete != null) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete holding?") },
-            text = { Text("\"${initial.name}\" will be removed from your wealth. This can't be undone.") },
-            confirmButton = {
-                TextButton(onClick = { confirmDelete = false; onDelete(initial) }) {
-                    Text("Delete", color = MaterialTheme.colorScheme.error)
+        BasicAlertDialog(onDismissRequest = { confirmDelete = false }) {
+            Surface(
+                shape = RoundedCornerShape(4.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.border(1.dp, MaterialTheme.spend.hairline, RoundedCornerShape(4.dp)),
+            ) {
+                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Delete holding?", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        "\"${initial.name}\" will be removed from your wealth. This can't be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        GhostButton("Cancel", { confirmDelete = false }, Modifier.weight(1f))
+                        PrimaryButton("Delete", { confirmDelete = false; onDelete(initial) }, Modifier.weight(1f))
+                    }
                 }
-            },
-            dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text("Cancel") } },
-        )
+            }
+        }
     }
 }
 
@@ -448,13 +482,15 @@ fun UpdateValueSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        shape = MaterialTheme.shapes.extraLarge,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        dragHandle = { SheetDragHandle() },
     ) {
         Column(
             Modifier.fillMaxWidth().imePadding().padding(horizontal = 20.dp).navigationBarsPadding(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Text("Update value", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.SemiBold)
+            Text("Update value", style = MaterialTheme.typography.displaySmall)
             Text(
                 "${holding.name} · invested ${formatInr(holding.investedAmount)}",
                 style = MaterialTheme.typography.bodyMedium,
@@ -472,7 +508,7 @@ fun UpdateValueSheet(
                 modifier = Modifier.fillMaxWidth(),
             )
             PrimaryButton(
-                text = "Update",
+                text = "Save",
                 onClick = {
                     val (v, e) = validateNewValue(text)
                     if (v != null) onSave(v) else {
