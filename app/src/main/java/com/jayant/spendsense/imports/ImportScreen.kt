@@ -169,7 +169,7 @@ private fun StatementControls(vm: StatementImportViewModel, phase: ImportPhase, 
                 PrimaryButton("Choose statement", onClick = pick, modifier = Modifier.fillMaxWidth())
             }
         }
-        if (phase !is ImportPhase.Done && phase !is ImportPhase.Preview && phase !is ImportPhase.Importing) ClaudeToggle(vm)
+        if (phase !is ImportPhase.Done && phase !is ImportPhase.Preview && phase !is ImportPhase.Importing) AiToggle(vm)
     }
 }
 
@@ -179,22 +179,22 @@ private fun Muted(text: String) {
 }
 
 @Composable
-private fun ClaudeToggle(vm: StatementImportViewModel) {
+private fun AiToggle(vm: StatementImportViewModel) {
     val enabled = vm.hasApiKey
     Row(
-        Modifier.fillMaxWidth().clickable(enabled = enabled) { vm.toggleClaude(!vm.useClaude) }
+        Modifier.fillMaxWidth().clickable(enabled = enabled) { vm.toggleAi(!vm.useAi) }
             .semantics { role = Role.Checkbox },
         horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.Top,
     ) {
-        SquareCheck(vm.useClaude, enabled)
+        SquareCheck(vm.useAi, enabled)
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                "Use Claude to read this statement", style = MaterialTheme.typography.bodyMedium,
+                "Use AI to read this statement", style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = if (enabled) 1f else 0.4f),
             )
             Muted(
-                if (enabled) "Only used if the built-in reader finds fewer than 3 rows. The statement text is sent to Anthropic."
-                else "Add an Anthropic API key in Settings to enable. The statement text would be sent to Anthropic.",
+                if (enabled) "Only used if the built-in reader finds fewer than 3 rows. The statement text is sent to ${vm.aiRecipient}."
+                else "Add an AI key in Settings to enable. The statement text would be sent to ${vm.aiRecipient}.",
             )
         }
     }

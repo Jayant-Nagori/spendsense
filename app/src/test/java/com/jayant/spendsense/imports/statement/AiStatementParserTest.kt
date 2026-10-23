@@ -1,20 +1,24 @@
 package com.jayant.spendsense.imports.statement
 
-import com.jayant.spendsense.ai.LlmApi
+import com.jayant.spendsense.ai.LlmClient
+import com.jayant.spendsense.ai.LlmMessage
+import com.jayant.spendsense.ai.LlmTurn
+import com.jayant.spendsense.ai.StopReason
+import com.jayant.spendsense.ai.ToolSpec
 import com.jayant.spendsense.data.TxnType
-import org.json.JSONArray
-import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiStatementParserTest {
 
-    private class FakeApi(private val reply: String) : LlmApi {
+    private class FakeApi(private val reply: String) : LlmClient {
         var calls = 0
-        override fun createMessage(body: JSONObject): JSONObject {
+        var sawTools = false
+        override fun complete(system: String, messages: List<LlmMessage>, tools: List<ToolSpec>, allowTools: Boolean, maxTokens: Int): LlmTurn {
             calls++
-            return JSONObject().put("content", JSONArray().put(JSONObject().put("type", "text").put("text", reply)))
+            if (tools.isNotEmpty() || allowTools) sawTools = true
+            return LlmTurn(reply, emptyList(), StopReason.END)
         }
     }
 
@@ -42,12 +46,13 @@ class AiStatementParserTest {
 
     @Test fun chunks_split_on_line_boundaries_and_each_chunk_calls_api() {
         val api = FakeApi("[]")
-        val parser = AiStatementParser(api, "m", chunkChars = 50)
+        val parser = AiStatementParser(api, chunkChars = 50)
         val lines = List(10) { "line number $it with some text" }
         val chunks = parser.chunk(lines)
         assertTrue(chunks.size > 1)
         assertEquals(lines.joinToString("\n", postfix = "\n"), chunks.joinToString(""))
         parser.parse(lines)
         assertEquals(chunks.size, api.calls)
+        assertTrue("statement parsing must be a plain completion", !api.sawTools)
     }
 }

@@ -82,6 +82,14 @@ class AssistantTools(
             ),
         )
 
+    /** Provider-neutral tool list; each client converts it to its own wire format. */
+    fun specs(): List<ToolSpec> = definitions().let { defs ->
+        (0 until defs.length()).map {
+            val d = defs.getJSONObject(it)
+            ToolSpec(d.getString("name"), d.getString("description"), d.getJSONObject("input_schema"))
+        }
+    }
+
     fun execute(name: String, input: JSONObject): ToolOutput = try {
         when (name) {
             "search_transactions" -> search(input)
