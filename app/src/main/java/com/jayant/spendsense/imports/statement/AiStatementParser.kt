@@ -1,18 +1,17 @@
 package com.jayant.spendsense.imports.statement
 
-import com.jayant.spendsense.ai.AssistantEngine
-import com.jayant.spendsense.ai.LlmApi
+import com.jayant.spendsense.ai.LlmClient
+import com.jayant.spendsense.ai.completeText
 import com.jayant.spendsense.data.TxnType
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Optional fallback: asks Claude to read statement text the heuristics could not. Only used when the user
- * explicitly opts in. The statement text goes to Anthropic; nothing is logged or written to disk here.
+ * Optional fallback: asks the configured AI to read statement text the heuristics could not. Only used when the user
+ * explicitly opts in. The statement text goes to the user's chosen AI provider; nothing is logged or written to disk here.
  */
 class AiStatementParser(
-    private val api: LlmApi,
-    private val model: String = AssistantEngine.MODEL,
+    private val llm: LlmClient,
     private val chunkChars: Int = 9000,
 ) {
     fun parse(lines: List<String>, bank: String? = null, account: String? = null, onProgress: (done: Int, total: Int) -> Unit = { _, _ -> }): StatementParse {
@@ -37,21 +36,7 @@ class AiStatementParser(
         return chunks
     }
 
-    private fun replyFor(text: String): String {
-        val body = JSONObject()
-            .put("model", model)
-            .put("max_tokens", 8000)
-            .put("system", SYSTEM)
-            .put("messages", JSONArray().put(JSONObject().put("role", "user").put("content", "Statement text:\n\n$text")))
-        val resp = api.createMessage(body)
-        val content = resp.optJSONArray("content") ?: return ""
-        return buildString {
-            for (i in 0 until content.length()) {
-                val b = content.optJSONObject(i) ?: continue
-                if (b.optString("type") == "text") append(b.optString("text"))
-            }
-        }
-    }
+    private fun replyFor(text: String): String = llm.completeText(SYSTEM, "Statement text:\n\n$text", 8000)
 
     companion object {
         private const val SYSTEM =

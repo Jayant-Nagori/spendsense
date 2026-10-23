@@ -8,7 +8,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.jayant.spendsense.ai.AnthropicApi
+import com.jayant.spendsense.ai.ConfiguredLlmClient
+import com.jayant.spendsense.ai.aiConfig
 import com.jayant.spendsense.ai.AssistantException
 import com.jayant.spendsense.ai.ErrorKind
 import com.jayant.spendsense.data.Settings
@@ -43,9 +44,12 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
     var phase by mutableStateOf<ImportPhase>(ImportPhase.Idle)
         private set
     val rows = mutableStateListOf<PreviewRow>()
-    var useClaude by mutableStateOf(false)
+    var useAi by mutableStateOf(false)
         private set
-    val hasApiKey: Boolean = runCatching { Settings(app).anthropicApiKey.isNotBlank() }.getOrDefault(false)
+    private val aiConfigNow = runCatching { Settings(app).aiConfig() }.getOrNull()
+    val hasApiKey: Boolean = aiConfigNow != null
+    /** Who would receive the statement text, for the privacy line. */
+    val aiRecipient: String = aiConfigNow?.recipient ?: "your AI provider"
 
     private var uri: Uri? = null
     private var lines: List<String>? = null
@@ -85,10 +89,10 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
 
     fun cancelPassword() { reset() }
 
-    fun toggleClaude(on: Boolean) {
-        useClaude = on && hasApiKey
+    fun toggleAi(on: Boolean) {
+        useAi = on && hasApiKey
         val text = lines
-        if (useClaude && text != null && rows.size < 3 && phase !is ImportPhase.Reading) {
+        if (useAi && text != null && rows.size < 3 && phase !is ImportPhase.Reading) {
             job?.cancel()
             job = viewModelScope.launch { finishParse(StatementImporter.parseLines(text)) }
         }
@@ -114,11 +118,11 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
     private suspend fun finishParse(heuristic: StatementParse) {
         var result = heuristic
         val text = lines
-        if (heuristic.entries.size < 3 && heuristic.hadText && useClaude && hasApiKey && !text.isNullOrEmpty()) {
-            phase = ImportPhase.Reading("Asking Claude to read it")
+        if (heuristic.entries.size < 3 && heuristic.hadText && useAi && hasApiKey && !text.isNullOrEmpty()) {
+            phase = ImportPhase.Reading("Asking the AI to read it")
             try {
                 val ai = withContext(Dispatchers.IO) {
-                    AiStatementParser(AnthropicApi({ Settings(getApplication()).anthropicApiKey }))
+                    AiStatementParser(ConfiguredLlmClient({ Settings(getApplication()).aiConfig() }))
                         .parse(text, heuristic.bank ?: StatementImporter.detectBank(text.take(40).joinToString("\n")), heuristic.account)
                 }
                 if (ai.entries.size > heuristic.entries.size) result = ai
@@ -134,17 +138,17 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
             entries.isNotEmpty() -> ImportPhase.Preview
             !result.hadText -> ImportPhase.Failed("No text found in this file. It may be a scanned PDF.")
             else -> ImportPhase.Failed(
-                if (hasApiKey && !useClaude) "No transactions found. Tick \"Use Claude to read this statement\" to try again."
+                if (hasApiKey && !useAi) "No transactions found. Tick \"Use AI to read this statement\" to try again."
                 else "No transactions found in this file.",
             )
         }
     }
 
     private fun aiMessage(kind: ErrorKind) = when (kind) {
-        ErrorKind.NO_KEY, ErrorKind.AUTH -> "Claude rejected the API key. Check it in Settings."
-        ErrorKind.RATE_LIMIT, ErrorKind.OVERLOADED -> "Claude is busy right now. Try again in a minute."
-        ErrorKind.NETWORK -> "No connection to Claude."
-        else -> "Claude could not read this statement."
+        ErrorKind.NO_KEY, ErrorKind.AUTH -> "The AI provider rejected the API key. Check it in Settings."
+        ErrorKind.RATE_LIMIT, ErrorKind.OVERLOADED -> "The AI is busy right now. Try again in a minute."
+        ErrorKind.NETWORK -> "No connection to the AI provider."
+        else -> "The AI could not read this statement."
     }
 
     fun toggle(index: Int) {

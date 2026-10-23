@@ -2,10 +2,11 @@ package com.jayant.spendsense.data
 
 import android.content.Context
 import android.util.Base64
+import com.jayant.spendsense.ai.AiProvider
 import com.jayant.spendsense.security.KeystoreCipher
 
 /**
- * Small key/value settings. The Anthropic API key is stored only as an AES-256-GCM blob wrapped by a
+ * Small key/value settings. The AI API key (any provider) is stored only as an AES-256-GCM blob wrapped by a
  * non-exportable Android Keystore key; never written to disk in plaintext. Other values are
  * non-secret preferences.
  */
@@ -14,7 +15,7 @@ class Settings(context: Context) {
 
     init { migrateLegacyKey() }
 
-    var anthropicApiKey: String
+    var aiApiKey: String
         get() {
             val enc = prefs.getString(KEY_API_ENC, null) ?: return ""
             return runCatching {
@@ -30,6 +31,21 @@ class Settings(context: Context) {
             val blob = KeystoreCipher.encrypt(KeystoreCipher.ALIAS_PREFS, key.toByteArray(Charsets.UTF_8))
             prefs.edit().putString(KEY_API_ENC, Base64.encodeToString(blob, Base64.NO_WRAP)).apply()
         }
+
+    /** Explicit provider choice; null = auto-detect from the key prefix. */
+    var aiProvider: AiProvider?
+        get() = AiProvider.fromName(prefs.getString("ai_provider", null))
+        set(v) { prefs.edit().apply { if (v == null) remove("ai_provider") else putString("ai_provider", v.name) }.apply() }
+
+    /** Model id override; blank = the provider's default. */
+    var aiModel: String
+        get() = prefs.getString("ai_model", "").orEmpty()
+        set(v) = prefs.edit().putString("ai_model", v.trim()).apply()
+
+    /** Base URL, only used with the Custom provider. https only. */
+    var aiBaseUrl: String
+        get() = prefs.getString("ai_base_url", "").orEmpty()
+        set(v) = prefs.edit().putString("ai_base_url", v.trim()).apply()
 
     var askSplitAfterPayment: Boolean
         get() = prefs.getBoolean("ask_split", true)
@@ -52,14 +68,21 @@ class Settings(context: Context) {
     /** Remove every stored value (used by "Wipe all data"). */
     fun clearAll() { prefs.edit().clear().commit() }
 
+    /** Old installs stored the key as "anthropic_api_key_enc" (same cipher) or even older plaintext. Move it over. */
     private fun migrateLegacyKey() {
+        val old = prefs.getString(KEY_API_ENC_OLD, null)
+        if (old != null) {
+            if (!prefs.contains(KEY_API_ENC)) prefs.edit().putString(KEY_API_ENC, old).remove(KEY_API_ENC_OLD).apply()
+            else prefs.edit().remove(KEY_API_ENC_OLD).apply()
+        }
         val legacy = prefs.getString(KEY_API_LEGACY, null) ?: return
-        val ok = runCatching { if (legacy.isNotBlank()) anthropicApiKey = legacy }.isSuccess
+        val ok = runCatching { if (legacy.isNotBlank() && aiApiKey.isEmpty()) aiApiKey = legacy }.isSuccess
         if (ok) prefs.edit().remove(KEY_API_LEGACY).apply()
     }
 
     private companion object {
-        const val KEY_API_ENC = "anthropic_api_key_enc"
+        const val KEY_API_ENC = "ai_api_key_enc"
+        const val KEY_API_ENC_OLD = "anthropic_api_key_enc"
         const val KEY_API_LEGACY = "anthropic_api_key"
     }
 }

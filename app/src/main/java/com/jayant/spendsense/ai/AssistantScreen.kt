@@ -142,7 +142,7 @@ private fun OfflineStrip() {
         Box(Modifier.size(6.dp).background(MaterialTheme.colorScheme.primary, RectangleShape))
         Spacer(Modifier.size(8.dp))
         Text(
-            "Offline mode \u00B7 add an API key in Settings for full AI",
+            "Offline mode \u00B7 add an AI key in Settings for full AI",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,

@@ -23,9 +23,14 @@ class Assistant(
             when (e.kind) {
                 ErrorKind.NO_KEY -> offline(question, null)
                 ErrorKind.NETWORK -> offline(question, "Couldn't reach the AI, so here's an offline answer.")
-                ErrorKind.AUTH -> offline(question, "Your Anthropic API key was rejected. Check it in Settings. Offline answer:")
+                ErrorKind.AUTH -> offline(question, "Your AI API key was rejected. Check it in Settings. Offline answer:")
                 ErrorKind.RATE_LIMIT -> Reply("The AI is rate limited right now. Give it a minute and try again.", mode = ReplyMode.ERROR)
                 ErrorKind.OVERLOADED -> Reply("The AI service is busy. Please try again in a moment.", mode = ReplyMode.ERROR)
+                ErrorKind.BAD_REQUEST -> Reply(
+                    "The AI provider rejected the request" + (e.message?.takeIf { it.isNotBlank() && it != "Bad request" }?.let { ": $it" } ?: "") +
+                        ". If it mentions the model, change it in Settings.",
+                    mode = ReplyMode.ERROR,
+                )
                 else -> Reply("Something went wrong talking to the AI. Please try again.", mode = ReplyMode.ERROR)
             }
         } catch (e: Exception) {

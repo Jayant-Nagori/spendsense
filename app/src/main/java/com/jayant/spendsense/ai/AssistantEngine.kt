@@ -1,8 +1,6 @@
 package com.jayant.spendsense.ai
 
 import com.jayant.spendsense.data.Transaction
-import org.json.JSONArray
-import org.json.JSONObject
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -10,17 +8,16 @@ import java.util.Locale
 data class EngineResult(val text: String, val txns: List<Transaction>)
 
 /**
- * Agentic tool-use loop over the Claude Messages API (manual loop, max [MAX_ITERATIONS] model calls).
+ * Agentic tool-use loop over any [LlmClient] (manual loop, max [MAX_ITERATIONS] model calls).
  * Conversation history stays in memory so follow-ups work. Blocking: call from Dispatchers.IO.
  */
 class AssistantEngine(
-    private val api: LlmApi,
+    private val llm: LlmClient,
     private val tools: AssistantTools,
     private val clock: () -> ZonedDateTime = { ZonedDateTime.now(Ist.ZONE) },
-    private val model: String = MODEL,
 ) {
     companion object {
-        const val MODEL = "claude-sonnet-5-5"
+        private const val MAX_TOKENS = 4096
         const val MAX_ITERATIONS = 6
         private const val MAX_HISTORY = 30
         private const val MAX_CARDS = 8
@@ -42,88 +39,48 @@ Rules:
 """.trim()
     }
 
-    private val history = mutableListOf<JSONObject>()
+    private val history = mutableListOf<LlmMessage>()
 
     fun reset() = history.clear()
 
     fun ask(question: String): EngineResult {
         val msgs = history.toMutableList()
-        msgs += JSONObject().put("role", "user").put("content", question)
+        msgs += LlmMessage.User(question)
         var cards: List<Transaction> = emptyList()
+        val specs = tools.specs()
 
         for (i in 0 until MAX_ITERATIONS) {
             val lastTurn = i == MAX_ITERATIONS - 1
-            val resp = call(msgs, noTools = lastTurn)
-            val content = resp.optJSONArray("content") ?: JSONArray()
-            msgs += JSONObject().put("role", "assistant").put("content", content)
-            val stop = resp.optString("stop_reason")
+            val turn = llm.complete(systemPrompt(clock()), msgs, specs, allowTools = !lastTurn, maxTokens = MAX_TOKENS)
+            msgs += LlmMessage.Assistant(turn.text, turn.toolCalls, turn.raw)
 
-            if (stop == "tool_use") {
-                val results = JSONArray()
-                for (b in 0 until content.length()) {
-                    val block = content.getJSONObject(b)
-                    if (block.optString("type") != "tool_use") continue
-                    val name = block.getString("name")
-                    val out = tools.execute(name, block.optJSONObject("input") ?: JSONObject())
-                    if (name == "search_transactions" && out.txns.isNotEmpty()) cards = out.txns.take(MAX_CARDS)
-                    if (name == "list_pending_splits" && out.txns.isNotEmpty() && cards.isEmpty()) cards = out.txns.take(MAX_CARDS)
-                    results.put(
-                        JSONObject().put("type", "tool_result").put("tool_use_id", block.getString("id"))
-                            .put("content", out.json).apply { if (out.isError) put("is_error", true) },
-                    )
+            if (turn.stop == StopReason.TOOL_USE && turn.toolCalls.isNotEmpty()) {
+                val results = turn.toolCalls.map { call ->
+                    val out = tools.execute(call.name, call.args)
+                    if (call.name == "search_transactions" && out.txns.isNotEmpty()) cards = out.txns.take(MAX_CARDS)
+                    if (call.name == "list_pending_splits" && out.txns.isNotEmpty() && cards.isEmpty()) cards = out.txns.take(MAX_CARDS)
+                    ToolResult(call.id, out.json, out.isError)
                 }
-                msgs += JSONObject().put("role", "user").put("content", results)
+                msgs += LlmMessage.ToolResults(results)
                 continue
             }
 
-            val text = textOf(content)
             commit(msgs)
             return when {
-                stop == "refusal" -> EngineResult("I can't help with that one.", emptyList())
-                text.isBlank() -> EngineResult("I couldn't put together an answer. Try rephrasing the question.", cards)
-                stop == "max_tokens" -> EngineResult("$text …", cards)
-                else -> EngineResult(text, cards)
+                turn.stop == StopReason.REFUSAL -> EngineResult("I can't help with that one.", emptyList())
+                turn.text.isBlank() -> EngineResult("I couldn't put together an answer. Try rephrasing the question.", cards)
+                turn.stop == StopReason.MAX_TOKENS -> EngineResult("${turn.text} …", cards)
+                else -> EngineResult(turn.text, cards)
             }
         }
         // Unreachable in practice: the last iteration forbids tools.
         return EngineResult("That took too many steps. Try a narrower question.", cards)
     }
 
-    private fun textOf(content: JSONArray): String = buildString {
-        for (b in 0 until content.length()) {
-            val block = content.getJSONObject(b)
-            if (block.optString("type") == "text") {
-                if (isNotEmpty()) append("\n")
-                append(block.optString("text"))
-            }
-        }
-    }.trim()
-
-    private fun call(msgs: List<JSONObject>, noTools: Boolean): JSONObject {
-        val body = JSONObject()
-            .put("model", model)
-            .put("max_tokens", 2048)
-            .put("system", systemPrompt(clock()))
-            .put("tools", tools.definitions())
-            .put("messages", JSONArray(msgs))
-        if (noTools) body.put("tool_choice", JSONObject().put("type", "none"))
-        val tuned = JSONObject(body.toString())
-            .put("thinking", JSONObject().put("type", "between_tools"))
-            .put("output_config", JSONObject().put("effort", "medium"))
-        return try {
-            api.createMessage(tuned)
-        } catch (e: AssistantException) {
-            // If the tuning fields are rejected, retry once with the plain request.
-            if (e.kind == ErrorKind.BAD_REQUEST) api.createMessage(body) else throw e
-        }
-    }
-
     /** Keep the last [MAX_HISTORY] messages, always starting on a plain user question. */
-    private fun commit(msgs: List<JSONObject>) {
+    private fun commit(msgs: List<LlmMessage>) {
         var list = if (msgs.size > MAX_HISTORY) msgs.takeLast(MAX_HISTORY) else msgs
-        while (list.isNotEmpty() && !(list.first().optString("role") == "user" && list.first().opt("content") is String)) {
-            list = list.drop(1)
-        }
+        while (list.isNotEmpty() && list.first() !is LlmMessage.User) list = list.drop(1)
         history.clear()
         history.addAll(list)
     }

@@ -30,18 +30,18 @@ class AssistantViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = Settings(app)
     private val data = RepoAssistantData(app)
     private val assistant = Assistant(
-        engine = AssistantEngine(AnthropicApi(keyProvider = { settings.anthropicApiKey }), AssistantTools(data)),
+        engine = AssistantEngine(ConfiguredLlmClient({ settings.aiConfig() }), AssistantTools(data)),
         local = LocalAnswerer(data),
-        hasKey = { settings.anthropicApiKey.isNotBlank() },
+        hasKey = { settings.aiApiKey.isNotBlank() },
     )
     private var nextId = 1L
 
-    private val _state = MutableStateFlow(AssistantUiState(hasKey = settings.anthropicApiKey.isNotBlank()))
+    private val _state = MutableStateFlow(AssistantUiState(hasKey = settings.aiApiKey.isNotBlank()))
     val state: StateFlow<AssistantUiState> = _state
 
     /** Call when the screen becomes visible: the key may have been added in Settings. */
     fun refreshKey() {
-        val has = settings.anthropicApiKey.isNotBlank()
+        val has = settings.aiApiKey.isNotBlank()
         _state.update { it.copy(hasKey = has) }
     }
 
@@ -49,7 +49,7 @@ class AssistantViewModel(app: Application) : AndroidViewModel(app) {
         val q = question.trim()
         if (q.isEmpty() || _state.value.loading) return
         _state.update {
-            it.copy(messages = it.messages + ChatMessage(nextId++, true, q), loading = true, hasKey = settings.anthropicApiKey.isNotBlank())
+            it.copy(messages = it.messages + ChatMessage(nextId++, true, q), loading = true, hasKey = settings.aiApiKey.isNotBlank())
         }
         viewModelScope.launch {
             val reply = withContext(Dispatchers.IO) { assistant.ask(q) }

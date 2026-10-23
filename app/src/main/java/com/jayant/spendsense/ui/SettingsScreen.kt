@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -53,6 +55,10 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.jayant.spendsense.ai.AiProvider
+import com.jayant.spendsense.ai.detectProvider
+import com.jayant.spendsense.ai.isHttpsUrl
+import com.jayant.spendsense.ai.resolveAiConfig
 import com.jayant.spendsense.data.Settings
 import com.jayant.spendsense.ingest.SmsBackfill
 import com.jayant.spendsense.security.SecuritySettingsSection
@@ -209,15 +215,27 @@ fun SettingsScreen(onBack: (() -> Unit)? = null, onOpenImport: (() -> Unit)? = n
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ApiKeyBlock(settings: Settings) {
-    var saved by remember { mutableStateOf(settings.anthropicApiKey) }
+    var saved by remember { mutableStateOf(settings.aiApiKey) }
     var editing by remember { mutableStateOf(saved.isEmpty()) }
     var draft by remember { mutableStateOf("") }
+    var provider by remember { mutableStateOf(settings.aiProvider) }
+    var savedModel by remember { mutableStateOf(settings.aiModel) }
+    var savedBase by remember { mutableStateOf(settings.aiBaseUrl) }
+    var modelDraft by remember { mutableStateOf(savedModel) }
+    var baseDraft by remember { mutableStateOf(savedBase) }
+
+    val effective = provider ?: if (saved.isNotEmpty()) detectProvider(saved) else null
+    val config = resolveAiConfig(saved, provider, savedModel, savedBase)
+    val baseOk = effective != AiProvider.CUSTOM || isHttpsUrl(baseDraft)
+    val dirty = modelDraft.trim() != savedModel || (effective == AiProvider.CUSTOM && baseDraft.trim() != savedBase)
 
     SettingsRow(
-        "Anthropic API key",
-        if (saved.isEmpty()) "Optional. Without one, Ask still answers from your data offline." else "Saved. Ask can answer open-ended questions.",
+        "AI API key",
+        if (saved.isEmpty()) "Optional. Paste a key from Claude, OpenAI, Gemini, OpenRouter, Groq or any OpenAI-compatible service. Without one, Ask still answers from your data offline."
+        else "Saved. Ask can answer open-ended questions.",
     ) { if (!editing) StatusText(true) }
     Spacer(Modifier.height(16.dp))
     if (!editing && saved.isNotEmpty()) {
@@ -228,23 +246,75 @@ private fun ApiKeyBlock(settings: Settings) {
                 modifier = Modifier.weight(1f).semantics { contentDescription = "API key saved, ends in ${saved.takeLast(4)}" },
             )
             SquareToggle("Replace", false, { editing = true; draft = "" })
-            SquareToggle("Remove", false, { settings.anthropicApiKey = ""; saved = ""; editing = true })
+            SquareToggle("Remove", false, { settings.aiApiKey = ""; saved = ""; editing = true })
         }
     } else {
         SquareField(
-            value = draft, onChange = { draft = it }, placeholder = "sk-ant-...",
+            value = draft, onChange = { draft = it }, placeholder = effective?.keyHint ?: "Paste any AI API key",
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         )
         Spacer(Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PrimaryButton("Save key", {
-                settings.anthropicApiKey = draft
-                saved = settings.anthropicApiKey; draft = ""; editing = saved.isEmpty()
+                settings.aiApiKey = draft
+                saved = settings.aiApiKey; draft = ""; editing = saved.isEmpty()
             }, Modifier.weight(1f), enabled = draft.isNotBlank())
             if (saved.isNotEmpty()) GhostButton("Cancel", { editing = false; draft = "" }, Modifier.weight(1f))
         }
     }
+
+    if (config != null && !editing) {
+        Spacer(Modifier.height(12.dp))
+        Text(
+            (if (provider == null) "Detected: " else "Using: ") + "${config.provider.displayName} \u00B7 ${config.model}",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+
+    Spacer(Modifier.height(20.dp))
+    AiFieldLabel("Provider")
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SquareToggle("Auto", provider == null, { provider = null; settings.aiProvider = null })
+        AiProvider.entries.forEach { p ->
+            SquareToggle(p.toggleLabel, provider == p, { provider = p; settings.aiProvider = p })
+        }
+    }
+
+    Spacer(Modifier.height(16.dp))
+    AiFieldLabel("Model")
+    SquareField(
+        value = modelDraft, onChange = { modelDraft = it },
+        placeholder = effective?.defaultModel ?: "Leave blank for the provider default",
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+    )
+    if (effective == AiProvider.CUSTOM) {
+        Spacer(Modifier.height(16.dp))
+        AiFieldLabel("Base URL")
+        SquareField(
+            value = baseDraft, onChange = { baseDraft = it }, placeholder = "https://your-host/v1",
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+        )
+        if (baseDraft.isNotBlank() && !baseOk) {
+            Spacer(Modifier.height(4.dp))
+            Text("Base URL must start with https://", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        }
+    }
+    if (dirty || (effective == AiProvider.CUSTOM && baseDraft.isNotBlank() && !baseOk)) {
+        Spacer(Modifier.height(16.dp))
+        PrimaryButton("Save AI settings", {
+            settings.aiModel = modelDraft; savedModel = settings.aiModel; modelDraft = savedModel
+            if (effective == AiProvider.CUSTOM) { settings.aiBaseUrl = baseDraft; savedBase = settings.aiBaseUrl; baseDraft = savedBase }
+        }, Modifier.fillMaxWidth(), enabled = dirty && baseOk)
+    }
+}
+
+@Composable
+private fun AiFieldLabel(text: String) {
+    Text(
+        text.uppercase(), style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp),
+    )
 }
 
 @Suppress("unused")
