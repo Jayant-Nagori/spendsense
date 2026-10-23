@@ -10,10 +10,11 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,20 +23,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.NotificationsActive
-import androidx.compose.material.icons.rounded.Sms
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -47,10 +42,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
@@ -65,12 +57,7 @@ import com.jayant.spendsense.data.Settings
 import com.jayant.spendsense.ingest.SmsBackfill
 import com.jayant.spendsense.security.SecuritySettingsSection
 import com.jayant.spendsense.ui.components.GhostButton
-import com.jayant.spendsense.ui.components.Pill
 import com.jayant.spendsense.ui.components.PrimaryButton
-import com.jayant.spendsense.ui.components.SpendCard
-import com.jayant.spendsense.ui.components.SpendChip
-import com.jayant.spendsense.ui.components.pressable
-import com.jayant.spendsense.ui.components.staggeredEntrance
 import com.jayant.spendsense.ui.theme.ThemeMode
 import com.jayant.spendsense.ui.theme.ThemeState
 import com.jayant.spendsense.ui.theme.spend
@@ -89,12 +76,12 @@ private fun postNotificationsGranted(c: Context) =
     else NotificationManagerCompat.from(c).areNotificationsEnabled()
 
 @Composable
-fun SettingsScreen() {
+fun SettingsScreen(onBack: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = remember { Settings(context) }
 
-    // Bumped on every resume so permission cards reflect changes made in system settings.
+    // Bumped on every resume so permission rows reflect changes made in system settings.
     var tick by remember { mutableIntStateOf(0) }
     val owner = LocalLifecycleOwner.current
     DisposableEffect(owner) {
@@ -114,161 +101,103 @@ fun SettingsScreen() {
     var importing by remember { mutableStateOf(false) }
     var importResult by remember { mutableStateOf<String?>(null) }
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(top = 8.dp, bottom = 32.dp),
-        verticalArrangement = Arrangement.spacedBy(32.dp),
-    ) {
-        Column {
-            Text("Settings", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.onSurface)
-            Text(
-                "${listOf(sms, listener, notifs).count { it }} of 3 permissions on",
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        Row(
+            Modifier.fillMaxWidth().padding(start = if (onBack != null) 8.dp else 20.dp, end = 20.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onBack != null) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onSurface)
+                }
+            }
+            Text("Settings", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
         }
 
-        Group("Capture payments", Modifier.staggeredEntrance(0)) {
-            PermissionRow(
-                Icons.Rounded.Sms, "Bank SMS", "Reads payment alerts from your bank as they arrive.",
-                granted = sms, action = "Allow",
-            ) { smsLauncher.launch(arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS)) }
-            Divider()
-            PermissionRow(
-                Icons.Rounded.NotificationsActive, "Payment app notifications",
-                "Catches UPI payments from apps like GPay and PhonePe. Turn on SpendSense in the list.",
-                granted = listener, action = "Open settings",
-            ) { context.startActivity(Intent(AndroidSettings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
-            Divider()
-            PermissionRow(
-                Icons.Rounded.Notifications, "Show notifications", "Needed to ask whether each payment was all yours.",
-                granted = notifs, action = "Allow",
-            ) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                else context.startActivity(
-                    Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
-                        .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
+        Column(Modifier.padding(horizontal = 20.dp).padding(top = 16.dp, bottom = 72.dp), verticalArrangement = Arrangement.spacedBy(40.dp)) {
+            SettingsGroup("Capture") {
+                SettingsRow("Bank SMS", "Reads payment alerts from your bank as they arrive.",
+                    onClick = if (sms) null else ({ smsLauncher.launch(arrayOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.READ_SMS)) }),
+                ) { StatusChevron(sms) }
+                SettingsRow("Payment app notifications", "Catches UPI payments from GPay, PhonePe and others.",
+                    onClick = if (listener) null else ({
+                        context.startActivity(Intent(AndroidSettings.ACTION_NOTIFICATION_LISTENER_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }),
+                ) { StatusChevron(listener) }
+                SettingsRow("Show notifications", "Needed to ask whether each payment was all yours.",
+                    onClick = if (notifs) null else ({
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        else context.startActivity(
+                            Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, context.packageName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }),
+                ) { StatusChevron(notifs) }
             }
-        }
 
-        Group("Past payments", Modifier.staggeredEntrance(1)) {
-            Text(
-                "Pull older bank SMS into your history. These are added as already answered, so you won't be asked about them.",
-                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(16.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(3, 6, 12).forEach { m -> SpendChip("$m months", months == m, { months = m }) }
-            }
-            Spacer(Modifier.height(16.dp))
-            PrimaryButton(
-                if (importing) "Importing..." else "Import past SMS",
-                enabled = sms && !importing,
-                modifier = Modifier.fillMaxWidth(),
-                onClick = {
-                    importing = true; importResult = null
-                    scope.launch {
-                        val since = System.currentTimeMillis() - months * 30L * 86_400_000L
-                        val count = withContext(Dispatchers.IO) { runCatching { SmsBackfill.run(context.applicationContext, since) }.getOrNull() }
-                        importing = false
-                        if (count == null) importResult = "Import failed. Check the SMS permission and try again."
-                        else {
-                            settings.smsBackfillDone = true
-                            importResult = if (count == 1) "Imported 1 transaction" else "Imported $count transactions"
+            SettingsGroup("History") {
+                SettingsRow("Import past SMS", "Added as already answered, so you won't be asked about them.")
+                Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(3, 6, 12).forEach { m -> SquareToggle("$m months", months == m, { months = m }) }
+                }
+                PrimaryButton(
+                    if (importing) "Importing..." else "Import",
+                    enabled = sms && !importing,
+                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                    onClick = {
+                        importing = true; importResult = null
+                        scope.launch {
+                            val since = System.currentTimeMillis() - months * 30L * 86_400_000L
+                            val count = withContext(Dispatchers.IO) { runCatching { SmsBackfill.run(context.applicationContext, since) }.getOrNull() }
+                            importing = false
+                            if (count == null) importResult = "Import failed. Check the SMS permission and try again."
+                            else {
+                                settings.smsBackfillDone = true
+                                importResult = if (count == 1) "Imported 1 transaction" else "Imported $count transactions"
+                            }
                         }
-                    }
-                },
-            )
-            if (!sms) {
-                Text("Allow Bank SMS first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
-            }
-            AnimatedVisibility(visible = importResult != null) {
-                Text(
-                    importResult.orEmpty(), style = MaterialTheme.typography.titleSmall,
-                    color = if (importResult?.startsWith("Imported") == true) MaterialTheme.spend.credit else MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(top = 12.dp).semantics { contentDescription = importResult.orEmpty() },
+                    },
                 )
+                if (!sms) {
+                    Text("Allow Bank SMS first.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
+                }
+                AnimatedVisibility(visible = importResult != null) {
+                    Text(
+                        importResult.orEmpty(), style = MaterialTheme.typography.titleSmall,
+                        color = if (importResult?.startsWith("Imported") == true) MaterialTheme.spend.credit else MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 12.dp).semantics { contentDescription = importResult.orEmpty() },
+                    )
+                }
+            }
+
+            SettingsGroup("Splits") {
+                SettingsRow("Ask after each payment", "A notification asks whether you paid it all yourself.",
+                    onClick = { askSplit = !askSplit; settings.askSplitAfterPayment = askSplit },
+                ) { OnOffToggle(askSplit) { askSplit = it; settings.askSplitAfterPayment = it } }
+            }
+
+            SettingsGroup("AI") { ApiKeyBlock(settings) }
+
+            SettingsGroup("Security") { SecuritySettingsSection() }
+
+            SettingsGroup("Appearance") {
+                val mode by ThemeState.mode
+                Row(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SquareToggle("Dark", mode == ThemeMode.DARK, { ThemePrefs.save(context, ThemeMode.DARK) })
+                    SquareToggle("Light", mode == ThemeMode.LIGHT, { ThemePrefs.save(context, ThemeMode.LIGHT) })
+                    SquareToggle("System", mode == ThemeMode.SYSTEM, { ThemePrefs.save(context, ThemeMode.SYSTEM) })
+                }
+            }
+
+            SettingsGroup("About") {
+                val version = remember {
+                    runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0"
+                }
+                SettingsRow("SpendSense", "All data stays on this phone.") {
+                    Text("v$version", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
-
-        Group("Splits", Modifier.staggeredEntrance(2)) {
-            SwitchRow(
-                "Ask about splits after each payment",
-                "A notification asks whether you paid it all yourself.",
-                askSplit,
-            ) { askSplit = it; settings.askSplitAfterPayment = it }
-        }
-
-        Group("AI assistant", Modifier.staggeredEntrance(3)) { ApiKeyBlock(settings) }
-
-        Group("Appearance", Modifier.staggeredEntrance(4)) {
-            val mode by ThemeState.mode
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SpendChip("Dark", mode == ThemeMode.DARK, { ThemePrefs.save(context, ThemeMode.DARK) })
-                SpendChip("Light", mode == ThemeMode.LIGHT, { ThemePrefs.save(context, ThemeMode.LIGHT) })
-                SpendChip("System", mode == ThemeMode.SYSTEM, { ThemePrefs.save(context, ThemeMode.SYSTEM) })
-            }
-        }
-
-        // Security is owned by the security agent; it brings its own heading.
-        SpendCard(Modifier.staggeredEntrance(5)) { SecuritySettingsSection() }
-
-        val version = remember {
-            runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "1.0"
-        }
-        Text(
-            "SpendSense $version  ·  all data stays on this phone",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline,
-        )
-    }
-}
-
-@Composable
-private fun Group(title: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
-    Column(modifier) {
-        Text(title, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(bottom = 12.dp))
-        SpendCard(contentPadding = 20.dp) { content() }
-    }
-}
-
-@Composable
-private fun Divider() {
-    Spacer(Modifier.fillMaxWidth().padding(vertical = 14.dp).height(1.dp).background(MaterialTheme.spend.hairline))
-}
-
-@Composable
-private fun PermissionRow(icon: ImageVector, title: String, body: String, granted: Boolean, action: String, onAction: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-        val tint = if (granted) MaterialTheme.spend.credit else MaterialTheme.colorScheme.primary
-        Box(Modifier.size(44.dp).clip(MaterialTheme.shapes.medium).background(tint.copy(alpha = 0.14f)), contentAlignment = Alignment.Center) {
-            Icon(if (granted) Icons.Rounded.Check else icon, null, tint = tint)
-        }
-        Column(Modifier.weight(1f).animateContentSize(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-                if (granted) Pill("On", MaterialTheme.spend.credit.copy(alpha = 0.14f), MaterialTheme.spend.credit)
-            }
-            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            if (!granted) {
-                Spacer(Modifier.height(6.dp))
-                GhostButton(action, onAction, Modifier.heightIn(min = 48.dp), color = MaterialTheme.colorScheme.primary)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SwitchRow(title: String, body: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().heightIn(min = 56.dp)
-            .pressable(role = Role.Switch) { onChange(!checked) },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
-            Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -278,33 +207,29 @@ private fun ApiKeyBlock(settings: Settings) {
     var editing by remember { mutableStateOf(saved.isEmpty()) }
     var draft by remember { mutableStateOf("") }
 
-    Text(
-        "Add an Anthropic API key to let the assistant answer open-ended questions. Without one it still answers from your data offline.",
-        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+    SettingsRow(
+        "Anthropic API key",
+        if (saved.isEmpty()) "Optional. Without one, Ask still answers from your data offline." else "Saved. Ask can answer open-ended questions.",
+    ) { if (!editing) StatusText(true) }
     Spacer(Modifier.height(16.dp))
     if (!editing && saved.isNotEmpty()) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Column(Modifier.weight(1f)) {
-                Text("Saved key", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(
-                    "•••••••• ${saved.takeLast(4)}",
-                    style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.semantics { contentDescription = "API key saved, ends in ${saved.takeLast(4)}" },
-                )
-            }
-            GhostButton("Replace", { editing = true; draft = "" })
-            GhostButton("Remove", { settings.anthropicApiKey = ""; saved = ""; editing = true }, color = MaterialTheme.colorScheme.error)
+            Text(
+                "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022 ${saved.takeLast(4)}",
+                style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f).semantics { contentDescription = "API key saved, ends in ${saved.takeLast(4)}" },
+            )
+            SquareToggle("Replace", false, { editing = true; draft = "" })
+            SquareToggle("Remove", false, { settings.anthropicApiKey = ""; saved = ""; editing = true })
         }
     } else {
-        OutlinedTextField(
-            value = draft, onValueChange = { draft = it }, label = { Text("Anthropic API key") },
-            singleLine = true, visualTransformation = PasswordVisualTransformation(),
+        SquareField(
+            value = draft, onChange = { draft = it }, placeholder = "sk-ant-...",
+            visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             PrimaryButton("Save key", {
                 settings.anthropicApiKey = draft
                 saved = settings.anthropicApiKey; draft = ""; editing = saved.isEmpty()
@@ -316,5 +241,3 @@ private fun ApiKeyBlock(settings: Settings) {
 
 @Suppress("unused")
 private val keepUri = Uri.EMPTY
-@Suppress("unused")
-private val keepCircle = CircleShape
