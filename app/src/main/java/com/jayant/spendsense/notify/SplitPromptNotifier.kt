@@ -70,7 +70,7 @@ object SplitPromptNotifier {
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(public)
-            .setColor(0xFFFFB547.toInt())
+            .setColor(0xFFD6B97C.toInt())
             .setAutoCancel(true)
             .setContentIntent(splitIntent(nid * 4))
             .addAction(0, "Fully mine", fullyMine)

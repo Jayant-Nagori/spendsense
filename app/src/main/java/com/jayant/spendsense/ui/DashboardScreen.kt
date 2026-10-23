@@ -84,6 +84,7 @@ private data class MonthSummary(
     val mySpend: Double,
     val paidOut: Double,
     val coveredByOthers: Double,
+    val refunded: Double,
     val income: Double,
     val categories: List<CategoryTotal>,
     val recent: List<Transaction>,
@@ -100,7 +101,8 @@ private fun summarise(monthStart: Long, txns: List<Transaction>): MonthSummary {
         count = txns.size,
         mySpend = debits.sumOf { it.effectiveAmount },
         paidOut = debits.sumOf { it.amount },
-        coveredByOthers = debits.sumOf { it.amount - it.effectiveAmount },
+        coveredByOthers = debits.sumOf { if (it.isSplit && it.myShare != null) it.amount - it.myShare else 0.0 },
+        refunded = debits.sumOf { if (it.refundStatus == com.jayant.spendsense.data.RefundStatus.RECEIVED) it.refundAmount ?: 0.0 else 0.0 },
         income = credits.sumOf { it.amount },
         categories = categories,
         recent = txns.take(5),
@@ -247,7 +249,12 @@ private fun Hero(s: MonthSummary, modifier: Modifier = Modifier) {
         Overline(if (isCurrent) "Spent this month" else "Spent in ${formatMonth(s.monthStart).substringBefore(' ')}")
         HeroMoney(s.mySpend)
         Text(
-            "${formatRupees(s.paidOut)} paid  ·  ${formatRupees(s.coveredByOthers)} covered by others  ·  ${formatRupees(s.income)} in",
+            listOfNotNull(
+                "${formatRupees(s.paidOut)} paid",
+                s.coveredByOthers.takeIf { it > 0.004 }?.let { "${formatRupees(it)} covered by others" },
+                s.refunded.takeIf { it > 0.004 }?.let { "${formatRupees(it)} refunded" },
+                "${formatRupees(s.income)} in",
+            ).joinToString("  ·  "),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )

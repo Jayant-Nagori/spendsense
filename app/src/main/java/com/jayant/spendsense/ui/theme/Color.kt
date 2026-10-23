@@ -3,16 +3,16 @@ package com.jayant.spendsense.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // NeoPOP-inspired palette (CRED's design language): pure black, monochrome greys, white as the primary
-// action colour and a single electric-lime "pop" used sparingly for things that need you.
+// action colour and a single muted champagne-gold accent used sparingly for things that need you.
 internal val Ink = Color(0xFF000000)
 internal val InkLow = Color(0xFF0A0A0A)
 internal val Surface1 = Color(0xFF121212)
 internal val Surface2 = Color(0xFF1A1A1A)
 internal val Surface3 = Color(0xFF242424)
 
-internal val Pop = Color(0xFFE5FE40)          // lime pop accent
-internal val PopDeep = Color(0xFF2B300A)
-internal val PopEdge = Color(0xFF9DB01C)      // NeoPOP plunk edge for lime surfaces
+internal val Pop = Color(0xFFD6B97C)          // champagne gold accent (replaced neon lime on user feedback)
+internal val PopDeep = Color(0xFF2A2417)
+internal val PopEdge = Color(0xFF8C7546)      // NeoPOP plunk edge for gold surfaces
 internal val Orchid = Color(0xFFB8A9FF)
 internal val OrchidDeep = Color(0xFF221D3D)
 
