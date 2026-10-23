@@ -4,13 +4,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldColors
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.jayant.spendsense.data.PaymentMode
 
@@ -19,10 +20,7 @@ import com.jayant.spendsense.data.PaymentMode
 fun CategoryPicker(selected: String, onSelect: (String) -> Unit, modifier: Modifier = Modifier) {
     FlowRow(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         SpendCategories.forEach { c ->
-            SpendChip(
-                label = c, selected = selected == c, onClick = { onSelect(c) },
-                leading = { Icon(categoryIcon(c), null, modifier = Modifier.size(16.dp)) },
-            )
+            SpendChip(label = c, selected = selected == c, onClick = { onSelect(c) })
         }
     }
 }
@@ -35,11 +33,28 @@ fun PaymentModePicker(selected: PaymentMode?, onSelect: (PaymentMode) -> Unit, m
     }
 }
 
-/** Section label above a form control (sentence case, quiet). */
+/** Section label above a form control: uppercase, grey, tracked. */
 @Composable
 fun FieldLabel(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+    Text(text.uppercase(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
+
+/** Spec input colours: black fill, 1dp hairline border, white border when focused. */
+@Composable
+fun neoFieldColors(): TextFieldColors = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = MaterialTheme.colorScheme.onBackground,
+    unfocusedBorderColor = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f),
+    errorBorderColor = MaterialTheme.colorScheme.error,
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    cursorColor = MaterialTheme.colorScheme.onBackground,
+    focusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unfocusedLabelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    focusedPlaceholderColor = MaterialTheme.colorScheme.outline,
+    unfocusedPlaceholderColor = MaterialTheme.colorScheme.outline,
+    focusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+    unfocusedLeadingIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+)
 
 @Composable
 fun SpendTextField(
@@ -52,7 +67,8 @@ fun SpendTextField(
 ) {
     OutlinedTextField(
         value = value, onValueChange = onValueChange, label = { Text(label) },
-        singleLine = singleLine, minLines = minLines, shape = MaterialTheme.shapes.medium,
+        singleLine = singleLine, minLines = minLines, shape = MaterialTheme.shapes.small,
+        colors = neoFieldColors(),
         modifier = modifier.fillMaxWidth(),
     )
 }
