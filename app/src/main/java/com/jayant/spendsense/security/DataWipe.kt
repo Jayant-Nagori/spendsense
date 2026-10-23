@@ -16,6 +16,8 @@ object DataWipe {
         Thread {
             runCatching { TransactionDb.wipe(app) }
             runCatching { Settings(app).clearAll() }
+            runCatching { com.jayant.spendsense.imports.email.EmailSync.cancelSchedule(app) }
+            runCatching { com.jayant.spendsense.imports.email.EmailCredentials(app).clear() }
             runCatching { KeystoreCipher.deleteKey(KeystoreCipher.ALIAS_PREFS) }
             runCatching { app.getSystemService(NotificationManager::class.java)?.cancelAll() }
             Handler(Looper.getMainLooper()).post {
