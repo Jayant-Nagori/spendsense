@@ -1,5 +1,7 @@
 package com.jayant.spendsense.ui
 
+import com.jayant.spendsense.ui.theme.spend
+import androidx.compose.ui.text.withStyle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -248,13 +250,20 @@ private fun Hero(s: MonthSummary, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Overline(if (isCurrent) "Spent this month" else "Spent in ${formatMonth(s.monthStart).substringBefore(' ')}")
         HeroMoney(s.mySpend)
+        val moneyIn = MaterialTheme.spend.credit
         Text(
-            listOfNotNull(
-                "${formatRupees(s.paidOut)} paid",
-                s.coveredByOthers.takeIf { it > 0.004 }?.let { "${formatRupees(it)} covered by others" },
-                s.refunded.takeIf { it > 0.004 }?.let { "${formatRupees(it)} refunded" },
-                "${formatRupees(s.income)} in",
-            ).joinToString("  ·  "),
+            androidx.compose.ui.text.buildAnnotatedString {
+                val parts = listOfNotNull(
+                    "${formatRupees(s.paidOut)} paid" to false,
+                    s.coveredByOthers.takeIf { it > 0.004 }?.let { "${formatRupees(it)} covered by others" to true },
+                    s.refunded.takeIf { it > 0.004 }?.let { "${formatRupees(it)} refunded" to true },
+                    "${formatRupees(s.income)} in" to (s.income > 0.004),
+                )
+                parts.forEachIndexed { i, (text, isIn) ->
+                    if (i > 0) append("  ·  ")
+                    if (isIn) withStyle(androidx.compose.ui.text.SpanStyle(color = moneyIn)) { append(text) } else append(text)
+                }
+            },
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp),
         )
@@ -299,7 +308,7 @@ private fun WhereItWent(categories: List<CategoryTotal>, modifier: Modifier = Mo
     val rest = categories.drop(4).sumOf { it.amount }
     val base = MaterialTheme.colorScheme.onSurface
     val shades: List<Color> = listOf(
-        MaterialTheme.colorScheme.primary, base.copy(alpha = 0.85f), base.copy(alpha = 0.55f), base.copy(alpha = 0.32f),
+        MaterialTheme.colorScheme.primary, MaterialTheme.spend.accent2, base.copy(alpha = 0.6f), base.copy(alpha = 0.32f),
     )
     val restColor = base.copy(alpha = 0.16f)
     Column(modifier) {

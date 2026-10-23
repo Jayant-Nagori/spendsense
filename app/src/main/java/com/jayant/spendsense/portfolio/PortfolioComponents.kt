@@ -228,8 +228,8 @@ fun TenureBar(progress: Float, modifier: Modifier = Modifier, color: Color = Mat
 @Composable
 fun allocationRamp(): List<Color> {
     val ink = MaterialTheme.colorScheme.onSurface
-    return listOf(MaterialTheme.colorScheme.primary) +
-        listOf(0.85f, 0.6f, 0.42f, 0.3f, 0.2f, 0.13f).map { ink.copy(alpha = it) }
+    return listOf(MaterialTheme.colorScheme.primary, com.jayant.spendsense.ui.theme.LocalSpendColors.current.accent2) +
+        listOf(0.6f, 0.42f, 0.3f, 0.2f, 0.13f).map { ink.copy(alpha = it) }
 }
 
 /** One 4dp stacked horizontal bar, 2dp gaps between segments, square ends. */

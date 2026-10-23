@@ -30,7 +30,7 @@ data class SpendColors(
 )
 
 private val DarkSpend = SpendColors(
-    credit = CreditGreen, debit = DebitRed, accent2 = Orchid, accent2Container = OrchidDeep,
+    credit = CreditGreen, debit = DebitRed, accent2 = Emerald, accent2Container = EmeraldDeep,
     hairline = Color.White.copy(alpha = 0.10f), cardTop = Surface1, isDark = true,
 )
 private val LightSpend = SpendColors(

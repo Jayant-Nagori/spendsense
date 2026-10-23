@@ -16,7 +16,10 @@ internal val PopEdge = Color(0xFF8C7546)      // NeoPOP plunk edge for gold surf
 internal val Orchid = Color(0xFFB8A9FF)
 internal val OrchidDeep = Color(0xFF221D3D)
 
-internal val CreditGreen = Color(0xFF5BE49B)
+// Third colour: deep emerald — money coming in (income, refunds, gains, covered by others) and the second chart series.
+internal val Emerald = Color(0xFF5FA88E)
+internal val EmeraldDeep = Color(0xFF14302A)
+internal val CreditGreen = Emerald
 internal val DebitRed = Color(0xFFFF6B5E)
 
 internal val TextHigh = Color(0xFFFFFFFF)
