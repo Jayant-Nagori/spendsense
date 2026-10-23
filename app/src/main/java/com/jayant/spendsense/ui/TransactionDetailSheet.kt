@@ -44,6 +44,7 @@ import com.jayant.spendsense.ui.components.MoneyText
 import com.jayant.spendsense.ui.components.PaymentModePicker
 import com.jayant.spendsense.ui.components.Pill
 import com.jayant.spendsense.ui.components.PrimaryButton
+import com.jayant.spendsense.ui.components.RefundCard
 import com.jayant.spendsense.ui.components.SpendCard
 import com.jayant.spendsense.ui.components.SpendTextField
 import com.jayant.spendsense.ui.components.SplitEditor
@@ -126,6 +127,8 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
                     SplitEditor(split)
                 }
             }
+
+            RefundCard(txn, onAction = { action -> close { action(TransactionRepository.get(context)) } })
 
             SpendTextField(counterparty, { counterparty = it }, if (isDebit) "Paid to" else "Received from")
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -91,7 +91,7 @@ private data class MonthSummary(
 
 private fun summarise(monthStart: Long, txns: List<Transaction>): MonthSummary {
     val debits = txns.filter { it.type == TxnType.DEBIT }
-    val credits = txns.filter { it.type == TxnType.CREDIT }
+    val credits = txns.filter { it.type == TxnType.CREDIT && !it.isRefundCredit }
     val categories = debits.groupBy { it.category }.mapValues { (_, v) -> v.sumOf { it.effectiveAmount } }
         .filterValues { it > 0 }.toList().sortedByDescending { it.second }
         .map { CategoryTotal(it.first, it.second) }

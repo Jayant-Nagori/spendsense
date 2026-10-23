@@ -139,7 +139,7 @@ class AssistantTools(
         val (from, to) = dateWindow(input)
         val all = data.search(fromMillis = from, toMillis = to, limit = FETCH_CAP)
         val debits = all.filter { it.type == TxnType.DEBIT }
-        val credits = all.filter { it.type == TxnType.CREDIT }
+        val credits = all.filter { it.type == TxnType.CREDIT && !it.isRefundCredit }
 
         fun group(list: List<Transaction>, key: (Transaction) -> String, top: Int): JSONArray =
             JSONArray(
@@ -270,6 +270,10 @@ class AssistantTools(
             .put("cat", t.category)
         if (t.isSplit && t.myShare != null) o.put("split", true).put("my_share", round2(t.myShare))
         t.paymentMode?.let { o.put("mode", it.name) }
+        if (t.refundStatus != com.jayant.spendsense.data.RefundStatus.NONE) {
+            o.put("refund", t.refundStatus.name).put("refund_amt", round2(t.refundAmount ?: 0.0)).put("my_cost", round2(t.effectiveAmount))
+        }
+        t.refundOfId?.let { o.put("refund_of_id", it) }
         t.account?.takeIf { it.isNotBlank() }?.let { o.put("acct", it.takeLast(6)) }
         t.bank?.let { o.put("bank", it) }
         t.note?.takeIf { it.isNotBlank() }?.let { o.put("note", it.take(80)) }
