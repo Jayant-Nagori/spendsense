@@ -61,6 +61,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jayant.spendsense.data.AssetType
 import com.jayant.spendsense.data.Investment
 import com.jayant.spendsense.ui.components.GhostButton
@@ -145,7 +146,7 @@ private fun SquareToggle(
     ) {
         Text(
             text,
-            style = MaterialTheme.typography.labelMedium,
+            style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 0.4.sp),
             color = if (selected) c.background else c.onSurface,
             textAlign = TextAlign.Center,
             maxLines = 2,

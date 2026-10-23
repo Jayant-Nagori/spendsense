@@ -235,6 +235,7 @@ private fun Hero(t: Totals) {
             MoneyText(
                 animated,
                 style = style.copy(fontSize = size.sp, lineHeight = (size * 1.08f).sp),
+                tabular = false,
             )
         }
         val sign = if (t.gain >= 0) "+" else "-"

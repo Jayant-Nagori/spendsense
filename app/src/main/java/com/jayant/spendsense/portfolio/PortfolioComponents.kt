@@ -126,6 +126,7 @@ fun MoneyText(
     decimals: Int = 0,
     weight: FontWeight? = null,
     compact: Boolean = false,
+    tabular: Boolean = true,
 ) {
     val base = if (color == Color.Unspecified) MaterialTheme.colorScheme.onSurface else color
     val text = if (compact) formatInrCompact(amount) else formatInr(amount, decimals)
@@ -149,7 +150,7 @@ fun MoneyText(
     Text(
         annotated,
         modifier = modifier,
-        style = style.copy(fontFeatureSettings = "tnum"),
+        style = style.copy(fontFeatureSettings = if (tabular) "tnum" else null),
         color = base,
         fontWeight = weight ?: style.fontWeight,
         maxLines = 1,
