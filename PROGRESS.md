@@ -25,17 +25,18 @@ Serving: http://192.168.1.103:8765/SpendSense.apk (sha256 16fe1524…9207). Rema
 Spec: DESIGN.md. Foundation committed on main (c80f8e3). Agents in worktrees:
 ~/spendsense-worktrees/r-home (redesign/home: nav 3 tabs, Home, Activity, split, components),
 r-wealth (redesign/wealth: portfolio/*), r-ask (redesign/ask: ai screen, settings, lock UI).
-- [~] merge redesign/home (DONE), redesign/wealth, redesign/ask (wire SettingsScreen(onBack) if needed)
-- [ ] build + tests, emulator screenshots of all screens, fix leftovers
-- [ ] release APK → ~/spendsense-dist/SpendSense.apk, serve on LAN (python3 -m http.server 8765 --bind $(ipconfig getifaddr en0)), tell user with URL
+- [x] merge redesign/home (DONE), redesign/wealth, redesign/ask (wire SettingsScreen(onBack) if needed)
+- [x] build + tests, emulator screenshots of all screens, fix leftovers
+- [x] release APK → ~/spendsense-dist/SpendSense.apk, serve on LAN (python3 -m http.server 8765 --bind $(ipconfig getifaddr en0)), tell user with URL
 
 ## Phase 3 — imports (user: "add bank statement pdf import, gmail import etc")
 Deps + R8 rules committed on main (d6e3bd8). Agents:
 ~/spendsense-worktrees/i-stmt (imports/stmt: imports/statement/**, imports/ImportScreen.kt, ShareImportActivity + manifest entry)
 ~/spendsense-worktrees/i-mail (imports/mail: imports/email/** — EmailImportSection(), Gmail IMAP + App Password; JobService manifest entry to add by orchestrator)
-- [ ] merge imports/stmt + imports/mail after redesign merges; wire ImportScreen(emailSection = { EmailImportSection() }) into Settings ("Import" row) and Home; add JobService to manifest
+- [x] merge imports/stmt + imports/mail after redesign merges; wire ImportScreen(emailSection = { EmailImportSection() }) into Settings ("Import" row) and Home; add JobService to manifest
 
 ## Refund flow (user: "keep a refund flow that i returned this product") — DONE on main
 Schema v2 (refund_status/refund_amount/refund_of_id, migration), repo markReturned/cancelReturn/linkRefund/unlinkRefund/findRefundTarget,
 auto-match in TransactionIngestor for refund credits + RefundNotifier, RefundCard in TransactionDetailSheet, refunds excluded from income.
 TODO at QA: emulator test — mark Dmart ₹1,250 returned, send "Refund of Rs 1250.00 from DMART credited to HDFC Bank Card XX4321" SMS, check link + notification.
+Served: http://192.168.1.110:8765/SpendSense.apk (12:27). Accent: champagne gold #D6B97C.
