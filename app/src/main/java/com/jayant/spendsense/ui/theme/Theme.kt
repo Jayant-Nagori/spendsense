@@ -31,7 +31,7 @@ data class SpendColors(
 
 private val DarkSpend = SpendColors(
     credit = CreditGreen, debit = DebitRed, accent2 = Orchid, accent2Container = OrchidDeep,
-    hairline = Color.White.copy(alpha = 0.07f), cardTop = Surface2, isDark = true,
+    hairline = Color.White.copy(alpha = 0.10f), cardTop = Surface1, isDark = true,
 )
 private val LightSpend = SpendColors(
     credit = LightCredit, debit = LightDebit, accent2 = Color(0xFF6A58E0), accent2Container = Color(0xFFE6E2FF),
@@ -44,8 +44,8 @@ val MaterialTheme.spend: SpendColors
     @Composable @ReadOnlyComposable get() = LocalSpendColors.current
 
 private val DarkScheme: ColorScheme = darkColorScheme(
-    primary = Saffron, onPrimary = Color(0xFF1B1200),
-    primaryContainer = SaffronDeep, onPrimaryContainer = Color(0xFFFFE0A8),
+    primary = Pop, onPrimary = Color.Black,
+    primaryContainer = PopDeep, onPrimaryContainer = Pop,
     secondary = Orchid, onSecondary = Color(0xFF17123A),
     secondaryContainer = OrchidDeep, onSecondaryContainer = Color(0xFFE4DFFF),
     tertiary = CreditGreen, onTertiary = Color(0xFF00210F),
@@ -53,11 +53,11 @@ private val DarkScheme: ColorScheme = darkColorScheme(
     background = Ink, onBackground = TextHigh,
     surface = Ink, onSurface = TextHigh,
     surfaceVariant = Surface2, onSurfaceVariant = TextMid,
-    surfaceTint = Saffron,
+    surfaceTint = Color.Transparent,
     surfaceContainerLowest = Ink, surfaceContainerLow = InkLow, surfaceContainer = Surface1,
     surfaceContainerHigh = Surface2, surfaceContainerHighest = Surface3,
-    inverseSurface = TextHigh, inverseOnSurface = Ink, inversePrimary = AmberInk,
-    outline = TextLow, outlineVariant = Color(0xFF26262F),
+    inverseSurface = TextHigh, inverseOnSurface = Ink, inversePrimary = Color(0xFF4A5200),
+    outline = TextLow, outlineVariant = Color(0xFF2A2A2A),
     error = DebitRed, onError = Color(0xFF3A0000),
     errorContainer = Color(0xFF3A1414), onErrorContainer = Color(0xFFFFD2D2),
     scrim = Color.Black,
@@ -76,19 +76,19 @@ private val LightScheme: ColorScheme = lightColorScheme(
     surfaceTint = AmberInk,
     surfaceContainerLowest = Color.White, surfaceContainerLow = Color(0xFFFAFAFD), surfaceContainer = PaperCard,
     surfaceContainerHigh = PaperHigh, surfaceContainerHighest = PaperHighest,
-    inverseSurface = LightText, inverseOnSurface = Paper, inversePrimary = Saffron,
+    inverseSurface = LightText, inverseOnSurface = Paper, inversePrimary = Pop,
     outline = Color(0xFF8A8A9C), outlineVariant = Color(0xFFDADAE4),
     error = LightDebit, onError = Color.White,
     errorContainer = Color(0xFFFFDADA), onErrorContainer = Color(0xFF410000),
 )
 
-/** Concentric radii: card 24, inner tile 16, chip/pill full. */
+/** NeoPOP: hard, nearly square corners everywhere. Bottom sheets get a small top radius only. */
 val SpendShapes = Shapes(
-    extraSmall = RoundedCornerShape(8.dp),
-    small = RoundedCornerShape(12.dp),
-    medium = RoundedCornerShape(16.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(32.dp),
+    extraSmall = RoundedCornerShape(2.dp),
+    small = RoundedCornerShape(2.dp),
+    medium = RoundedCornerShape(4.dp),
+    large = RoundedCornerShape(4.dp),
+    extraLarge = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
 )
 
 enum class ThemeMode { DARK, LIGHT, SYSTEM }

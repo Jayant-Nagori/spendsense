@@ -2,33 +2,34 @@ package com.jayant.spendsense.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Palette: "ink and saffron". Near-black ink surfaces, one saffron signature accent, soft orchid secondary.
-// Green / red are reserved for credit / debit semantics only.
-internal val Ink = Color(0xFF0A0A0F)
-internal val InkLow = Color(0xFF0F0F15)
-internal val Surface1 = Color(0xFF14141C)
-internal val Surface2 = Color(0xFF1C1C26)
-internal val Surface3 = Color(0xFF252531)
+// NeoPOP-inspired palette (CRED's design language): pure black, monochrome greys, white as the primary
+// action colour and a single electric-lime "pop" used sparingly for things that need you.
+internal val Ink = Color(0xFF000000)
+internal val InkLow = Color(0xFF0A0A0A)
+internal val Surface1 = Color(0xFF121212)
+internal val Surface2 = Color(0xFF1A1A1A)
+internal val Surface3 = Color(0xFF242424)
 
-internal val Saffron = Color(0xFFFFB547)
-internal val SaffronDeep = Color(0xFF3B2A0A)
-internal val Orchid = Color(0xFFB3A6FF)
-internal val OrchidDeep = Color(0xFF2A2548)
+internal val Pop = Color(0xFFE5FE40)          // lime pop accent
+internal val PopDeep = Color(0xFF2B300A)
+internal val PopEdge = Color(0xFF9DB01C)      // NeoPOP plunk edge for lime surfaces
+internal val Orchid = Color(0xFFB8A9FF)
+internal val OrchidDeep = Color(0xFF221D3D)
 
-internal val CreditGreen = Color(0xFF3DDC97)
-internal val DebitRed = Color(0xFFFF6B6B)
+internal val CreditGreen = Color(0xFF5BE49B)
+internal val DebitRed = Color(0xFFFF6B5E)
 
-internal val TextHigh = Color(0xFFF3F3F7)
-internal val TextMid = Color(0xFF9D9DAE)
-internal val TextLow = Color(0xFF6A6A7A)
+internal val TextHigh = Color(0xFFFFFFFF)
+internal val TextMid = Color(0xFF8C8C8C)
+internal val TextLow = Color(0xFF5A5A5A)
 
-// Light scheme
-internal val Paper = Color(0xFFF5F5F9)
+// Light scheme (kept for the Settings toggle)
+internal val Paper = Color(0xFFF4F4F0)
 internal val PaperCard = Color(0xFFFFFFFF)
-internal val PaperHigh = Color(0xFFEDEDF3)
-internal val PaperHighest = Color(0xFFE3E3EC)
-internal val AmberInk = Color(0xFFB36B00)
-internal val LightText = Color(0xFF14141C)
-internal val LightTextMid = Color(0xFF5E5E70)
+internal val PaperHigh = Color(0xFFEAEAE4)
+internal val PaperHighest = Color(0xFFDDDDD6)
+internal val AmberInk = Color(0xFF1A1A1A)
+internal val LightText = Color(0xFF0A0A0A)
+internal val LightTextMid = Color(0xFF5E5E5E)
 internal val LightCredit = Color(0xFF0E9F63)
 internal val LightDebit = Color(0xFFD64545)

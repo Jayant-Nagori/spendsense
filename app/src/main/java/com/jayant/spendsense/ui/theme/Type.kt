@@ -37,10 +37,11 @@ private fun serif(size: Int, line: Int, spacing: Double = 0.0) = TextStyle(
     letterSpacing = spacing.sp,
 )
 
+// CRED-style: money and hero numbers in heavy geometric sans; serif only for screen titles.
 val SpendTypography = Typography(
-    displayLarge = serif(68, 72, -1.5),
-    displayMedium = serif(48, 52, -1.0),
-    displaySmall = serif(34, 38, -0.5),
+    displayLarge = sans(64, 800, 68, -2.5),
+    displayMedium = sans(44, 800, 48, -1.5),
+    displaySmall = sans(32, 800, 36, -0.8),
     headlineLarge = serif(32, 38, -0.3),
     headlineMedium = serif(28, 34, -0.2),
     headlineSmall = serif(24, 30),
@@ -51,8 +52,8 @@ val SpendTypography = Typography(
     bodyMedium = sans(14, 500, 21),
     bodySmall = sans(12, 500, 17),
     labelLarge = sans(14, 700, 18),
-    labelMedium = sans(12, 600, 16, 0.1),
-    labelSmall = sans(11, 600, 14, 0.2),
+    labelMedium = sans(12, 700, 16, 1.2),
+    labelSmall = sans(11, 700, 14, 1.6),
 )
 
 /** Big money digits that are not Instrument Serif (e.g. in cramped rows). */
