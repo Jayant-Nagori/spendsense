@@ -180,12 +180,7 @@ private fun AppShell() {
                     }
                 }
                 Route.Activity -> TransactionsScreen(onBack = { route = Route.Tabs })
-                Route.Settings -> Column(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(top = 8.dp)) {
-                        SquareIconButton(Icons.AutoMirrored.Rounded.ArrowBack, "Back", { route = Route.Tabs })
-                    }
-                    Box(Modifier.weight(1f)) { SettingsScreen() }
-                }
+                Route.Settings -> SettingsScreen(onBack = { route = Route.Tabs }, onOpenImport = { route = Route.Import })
                 Route.Import -> com.jayant.spendsense.imports.ImportScreen(
                     onBack = { route = Route.Settings },
                     emailSection = { com.jayant.spendsense.imports.email.EmailImportSection() },

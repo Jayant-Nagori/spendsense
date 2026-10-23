@@ -76,7 +76,7 @@ private fun postNotificationsGranted(c: Context) =
     else NotificationManagerCompat.from(c).areNotificationsEnabled()
 
 @Composable
-fun SettingsScreen(onBack: (() -> Unit)? = null) {
+fun SettingsScreen(onBack: (() -> Unit)? = null, onOpenImport: (() -> Unit)? = null) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings = remember { Settings(context) }
@@ -135,6 +135,14 @@ fun SettingsScreen(onBack: (() -> Unit)? = null) {
                 ) { StatusChevron(notifs) }
             }
 
+            if (onOpenImport != null) {
+                SettingsGroup("Import") {
+                    SettingsRow(
+                        "Bank statements & Gmail", "Import PDF/CSV statements or bank alert emails", onClick = onOpenImport,
+                        trailing = { Text("→", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    )
+                }
+            }
             SettingsGroup("History") {
                 SettingsRow("Import past SMS", "Added as already answered, so you won't be asked about them.")
                 Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
