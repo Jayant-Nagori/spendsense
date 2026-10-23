@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -34,6 +35,7 @@ import com.jayant.spendsense.data.Transaction
 import com.jayant.spendsense.data.TransactionRepository
 import com.jayant.spendsense.data.TxnSource
 import com.jayant.spendsense.data.TxnType
+import com.jayant.spendsense.ui.components.AnswerTag
 import com.jayant.spendsense.ui.components.CategoryBadge
 import com.jayant.spendsense.ui.components.CategoryPicker
 import com.jayant.spendsense.ui.components.FieldLabel
@@ -86,11 +88,11 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         Column(
-            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding().imePadding(),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                CategoryBadge(category, size = 52.dp)
+                CategoryBadge(category, size = 48.dp)
                 Column(Modifier.weight(1f)) {
                     Text(
                         txn.counterparty?.takeIf { it.isNotBlank() } ?: if (isDebit) "Payment" else "Money received",
@@ -99,9 +101,9 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
                     Text(formatDateTime(txn.timestamp), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Pill(
-                    if (isDebit) "Debit" else "Credit",
-                    container = (if (isDebit) MaterialTheme.spend.debit else MaterialTheme.spend.credit).copy(alpha = 0.14f),
-                    content = if (isDebit) MaterialTheme.spend.debit else MaterialTheme.spend.credit,
+                    if (isDebit) "DEBIT" else "CREDIT",
+                    container = if (isDebit) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.spend.credit.copy(alpha = 0.14f),
+                    content = if (isDebit) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.spend.credit,
                 )
             }
 
@@ -110,16 +112,16 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
                 if (isDebit && txn.isSplit && txn.myShare != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Your share ", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        MoneyText(txn.effectiveAmount, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, symbolScale = 0.8f)
+                        MoneyText(txn.effectiveAmount, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface, symbolScale = 0.8f)
                     }
                 }
             }
 
             if (isDebit) {
-                SpendCard(contentPadding = 16.dp, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                SpendCard(contentPadding = 16.dp) {
                     if (!txn.reviewed) {
-                        Text("Not answered yet", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-                        Spacer(Modifier.height(8.dp))
+                        AnswerTag(text = "NOT ANSWERED YET")
+                        Spacer(Modifier.height(12.dp))
                     }
                     SplitEditor(split)
                 }
@@ -136,7 +138,7 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
             }
             SpendTextField(note, { note = it }, "Note", singleLine = false, minLines = 2)
 
-            SpendCard(contentPadding = 16.dp, color = MaterialTheme.colorScheme.surfaceContainerLow, modifier = Modifier.animateContentSize()) {
+            SpendCard(contentPadding = 16.dp, modifier = Modifier.animateContentSize()) {
                 Row(Modifier.fillMaxWidth().pressable(role = null) { showRaw = !showRaw }, verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("Original message", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
@@ -145,7 +147,7 @@ fun TransactionDetailSheet(txn: Transaction, onDismiss: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    Text(if (showRaw) "Hide" else "Show", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                    Text(if (showRaw) "HIDE" else "SHOW", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
                 }
                 if (showRaw) {
                     Spacer(Modifier.height(8.dp))

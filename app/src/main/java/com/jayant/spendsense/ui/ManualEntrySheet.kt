@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -153,14 +154,14 @@ fun ManualEntrySheet(onDismiss: () -> Unit) {
         shape = MaterialTheme.shapes.extraLarge,
     ) {
         Column(
-            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(bottom = 16.dp).navigationBarsPadding(),
-            verticalArrangement = Arrangement.spacedBy(20.dp),
+            Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 20.dp).padding(bottom = 16.dp).navigationBarsPadding().imePadding(),
+            verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
-            Text("Add a transaction", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text("Add a transaction", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface)
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                SpendChip("Paid", isDebit, { isDebit = true; duplicateWarning = false })
-                SpendChip("Received", !isDebit, { isDebit = false; duplicateWarning = false }, accent = MaterialTheme.spend.credit)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SpendChip("Paid", isDebit, { isDebit = true; duplicateWarning = false }, Modifier.weight(1f))
+                SpendChip("Received", !isDebit, { isDebit = false; duplicateWarning = false }, Modifier.weight(1f))
             }
 
             // Big serif amount entry
@@ -211,13 +212,13 @@ fun ManualEntrySheet(onDismiss: () -> Unit) {
             SpendTextField(note, { note = it }, "Note", singleLine = false, minLines = 2)
 
             AnimatedVisibility(visible = isDebit) {
-                SpendCard(contentPadding = 16.dp, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+                SpendCard(contentPadding = 16.dp) {
                     SplitEditor(split)
                 }
             }
 
             AnimatedVisibility(visible = duplicateWarning) {
-                SpendCard(contentPadding = 16.dp, color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)) {
+                SpendCard(contentPadding = 16.dp, borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)) {
                     Text("Looks like this was already recorded", style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurface)
                     Text(
                         "A payment of the same amount was saved within 10 minutes of this time.",
@@ -276,9 +277,8 @@ private fun DateTimeButton(text: String, desc: String, modifier: Modifier, onCli
     Box(
         modifier
             .heightIn(min = 52.dp)
-            .clip(MaterialTheme.shapes.medium)
-            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-            .border(1.dp, MaterialTheme.spend.hairline, MaterialTheme.shapes.medium)
+            .clip(MaterialTheme.shapes.small)
+            .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.22f), MaterialTheme.shapes.small)
             .pressable(onClick = onClick)
             .semantics { contentDescription = "$desc, currently $text" }
             .padding(horizontal = 16.dp),

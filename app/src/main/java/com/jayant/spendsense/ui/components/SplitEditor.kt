@@ -164,7 +164,7 @@ fun SplitEditor(state: SplitState, modifier: Modifier = Modifier) {
                 ) {
                     Text("OTHERS OWE YOU", style = MaterialTheme.typography.labelSmall, color = grey, modifier = Modifier.weight(1f))
                     if (state.isValid) {
-                        MoneyText(state.othersOwe, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.spend.credit, animate = true, decimals = MoneyDecimals.AUTO)
+                        MoneyText(state.othersOwe, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.spend.credit, decimals = MoneyDecimals.AUTO)
                     } else if (state.share == null) {
                         Text("Pick ½ ⅓ ¼ or type your share", style = MaterialTheme.typography.bodySmall, color = grey)
                     } else {

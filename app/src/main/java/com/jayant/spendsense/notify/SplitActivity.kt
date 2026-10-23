@@ -41,8 +41,9 @@ class SplitActivity : FragmentActivity() {
         // Rounded surface in the app's own colours instead of the stock dialog chrome.
         val dark = ThemePrefs.isDark(this)
         val bg = GradientDrawable().apply {
-            setColor(if (dark) AColor.parseColor("#14141C") else AColor.WHITE)
-            cornerRadius = 28f * resources.displayMetrics.density
+            setColor(if (dark) AColor.parseColor("#121212") else AColor.WHITE)
+            cornerRadius = 4f * resources.displayMetrics.density
+            setStroke((1f * resources.displayMetrics.density).toInt().coerceAtLeast(1), if (dark) 0x1AFFFFFF else 0x14000000)
         }
         window.setBackgroundDrawable(bg)
         window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -58,7 +59,7 @@ class SplitActivity : FragmentActivity() {
                         if (t == null || t.type != TxnType.DEBIT) finish() else txn = t
                     }
                     txn?.let { t ->
-                        Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(20.dp)) {
                             SplitContent(t, saveLabel = "Save", onSave = { isSplit, share ->
                                 val app = applicationContext
                                 Thread {
