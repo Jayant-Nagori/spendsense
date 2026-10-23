@@ -12,17 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.RectangleShape
+import com.jayant.spendsense.ui.components.GhostButton
+import com.jayant.spendsense.ui.components.PrimaryButton
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -105,54 +102,40 @@ private fun LockScreen(activity: FragmentActivity) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Box(
-                Modifier.size(88.dp).background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), CircleShape),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(40.dp))
+            // App mark: small white square tile with a black lock.
+            Box(Modifier.size(40.dp).background(MaterialTheme.colorScheme.onBackground, RectangleShape), contentAlignment = Alignment.Center) {
+                Icon(Icons.Filled.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.background, modifier = Modifier.size(20.dp))
             }
-            Spacer(Modifier.height(28.dp))
-            Text("SpendSense is locked", style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
+            Spacer(Modifier.height(32.dp))
+            Text(
+                "SpendSense is locked", style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.onBackground, textAlign = TextAlign.Center,
+            )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Your transactions and investments are encrypted on this device.",
+                "Your data is encrypted on this device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(40.dp))
             if (secure) {
-                Button(onClick = { startAuth() }, enabled = !inFlight, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Icon(Icons.Filled.Fingerprint, contentDescription = null, modifier = Modifier.size(20.dp))
-                    Spacer(Modifier.size(8.dp))
-                    Text("Unlock")
-                }
+                PrimaryButton("Unlock", { startAuth() }, Modifier.fillMaxWidth(), enabled = !inFlight)
                 error?.let {
                     Spacer(Modifier.height(16.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
             } else {
-                Column(
-                    Modifier.fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(16.dp))
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Icon(Icons.Filled.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "No screen lock is set on this device, so SpendSense cannot verify you. " +
-                            "Set a PIN, pattern, password or fingerprint in system Settings > Security. " +
-                            "Until then, anyone holding this phone can open your financial data.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-                Spacer(Modifier.height(16.dp))
-                OutlinedButton(onClick = { LockState.unlock() }, modifier = Modifier.fillMaxWidth().height(52.dp)) {
-                    Text("Continue without lock")
-                }
+                Text(
+                    "No screen lock is set on this device, so SpendSense cannot verify you. " +
+                        "Set a PIN, pattern, password or fingerprint in system Settings. " +
+                        "Until then, anyone holding this phone can open your financial data.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(24.dp))
+                GhostButton("Continue without lock", { LockState.unlock() }, Modifier.fillMaxWidth())
             }
         }
     }
