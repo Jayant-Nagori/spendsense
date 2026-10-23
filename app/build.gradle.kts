@@ -33,6 +33,9 @@ android {
         buildConfig = true
     }
     testOptions { unitTests.isReturnDefaultValues = true }
+    packaging {
+        resources.excludes += setOf("META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/DEPENDENCIES", "META-INF/*.kotlin_module")
+    }
 }
 
 kotlin { jvmToolchain(17) }
@@ -56,6 +59,11 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
     implementation("androidx.sqlite:sqlite:2.4.0")
+    // Statement import: PDF text extraction (incl. password-protected statements)
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+    // Email import: IMAP (Gmail with an App Password)
+    implementation("com.sun.mail:android-mail:1.6.7")
+    implementation("com.sun.mail:android-activation:1.6.7")
     testImplementation("org.json:json:20240303")
     testImplementation("junit:junit:4.13.2")
 }

@@ -12,3 +12,18 @@
     public static int d(...);
     public static int i(...);
 }
+
+# Email import (JavaMail for Android) loads providers reflectively
+-keep class com.sun.mail.** { *; }
+-keep class javax.mail.** { *; }
+-keep class javax.activation.** { *; }
+-keep class myjava.awt.datatransfer.** { *; }
+-dontwarn java.awt.**
+-dontwarn javax.security.sasl.**
+-dontwarn javax.naming.**
+
+# Statement import (PdfBox-Android) uses reflection for fonts/filters/encryption
+-keep class com.tom_roush.pdfbox.** { *; }
+-keep class com.tom_roush.fontbox.** { *; }
+-dontwarn com.gemalto.jp2.**
+-dontwarn org.bouncycastle.**
