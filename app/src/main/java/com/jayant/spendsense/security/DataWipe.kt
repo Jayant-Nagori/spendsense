@@ -16,8 +16,13 @@ object DataWipe {
         Thread {
             runCatching { TransactionDb.wipe(app) }
             runCatching { Settings(app).clearAll() }
+            runCatching { app.getSharedPreferences("orders", android.content.Context.MODE_PRIVATE).edit().clear().commit() }
+            runCatching { com.jayant.spendsense.orders.OrderSyncJobService.cancel(app) }
             runCatching { com.jayant.spendsense.imports.email.EmailSync.cancelSchedule(app) }
             runCatching { com.jayant.spendsense.imports.email.EmailCredentials(app).clear() }
+            runCatching { com.jayant.spendsense.backup.AutoBackup.disable(app) }
+            runCatching { app.getSharedPreferences("splitwise", android.content.Context.MODE_PRIVATE).edit().clear().commit() }
+            runCatching { app.getSharedPreferences("backup", android.content.Context.MODE_PRIVATE).edit().clear().commit() }
             runCatching { KeystoreCipher.deleteKey(KeystoreCipher.ALIAS_PREFS) }
             runCatching { app.getSystemService(NotificationManager::class.java)?.cancelAll() }
             Handler(Looper.getMainLooper()).post {

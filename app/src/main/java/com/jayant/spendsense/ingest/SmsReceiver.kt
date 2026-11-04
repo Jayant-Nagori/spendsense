@@ -11,8 +11,10 @@ import kotlin.concurrent.thread
 class SmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return
         val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent) ?: return
         val bySender = messages.filterNotNull().groupBy { it.originatingAddress.orEmpty() }
+        val receivedAt = android.os.SystemClock.elapsedRealtime()
         val pending = goAsync()
         val app = context.applicationContext
         thread(name = "sms-ingest") {
@@ -21,7 +23,12 @@ class SmsReceiver : BroadcastReceiver() {
                     val body = parts.joinToString("") { it.messageBody.orEmpty() }
                     val ts = parts.first().timestampMillis.takeIf { it > 0 } ?: System.currentTimeMillis()
                     val parsed = TransactionParser.parseSms(sender, body, ts) ?: continue
-                    ingestWithRetry { TransactionIngestor.ingest(app, parsed, TxnSource.SMS, sender, body, live = true) }
+                    com.jayant.spendsense.notify.PopupTiming.begin(receivedAt)
+                    try {
+                        ingestWithRetry { TransactionIngestor.ingest(app, parsed, TxnSource.SMS, sender, body, live = true) }
+                    } finally {
+                        com.jayant.spendsense.notify.PopupTiming.end()
+                    }
                 }
             } finally {
                 pending.finish()

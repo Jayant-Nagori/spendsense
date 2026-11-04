@@ -7,7 +7,6 @@ import android.graphics.drawable.ColorDrawable
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.SystemBarStyle
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -76,36 +75,39 @@ import com.jayant.spendsense.ui.theme.SpendSenseTheme
 import com.jayant.spendsense.ui.theme.resolveDark
 import com.jayant.spendsense.ui.theme.spend
 
-private data class Tab(val label: String, val icon: ImageVector)
-
-private val tabs = listOf(
-    Tab("Home", Icons.Rounded.Home),
-    Tab("Wealth", Icons.Rounded.AccountBalanceWallet),
-    Tab("Ask", Icons.Rounded.AutoAwesome),
-)
-
-/** Where the shell currently is: the three tabs, or a full-screen secondary route opened from Home. */
-private sealed interface Route {
-    data object Tabs : Route
-    data object Activity : Route
-    data object Settings : Route
-    data object Import : Route
-}
-
-private val RouteSaver = Saver<Route, String>(
-    save = { when (it) { Route.Tabs -> "tabs"; Route.Activity -> "activity"; Route.Settings -> "settings"; Route.Import -> "import" } },
-    restore = { when (it) { "activity" -> Route.Activity; "settings" -> Route.Settings; "import" -> Route.Import; else -> Route.Tabs } },
-)
-
 class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return
+        com.jayant.spendsense.orders.AndroidAuthBrowser.onHostResumed()
         // Payments queued while the phone was locked and the process was dead get their pop-up now.
         com.jayant.spendsense.notify.PaymentPopup.onUnlock(this)
+        // In the foreground a foreground-service start is always allowed: (re)start capture if the system stopped it.
+        com.jayant.spendsense.ingest.CaptureService.sync(this)
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return
+        debugLink(intent)
+    }
+
+    /** Debug builds: spendsense://debug/... QA links (intent filter only in src/debug's manifest). */
+    private fun debugLink(intent: android.content.Intent?) {
+        val data = intent?.data ?: return
+        if (com.jayant.spendsense.BuildConfig.DEBUG && data.scheme == "spendsense") {
+            com.jayant.spendsense.ui.DebugLinks.handle(this, data.toString())
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) {
+            SecureWindow.apply(this)
+            setContent { NotGenuineScreen() }
+            return
+        }
+        debugLink(intent)
         SecureWindow.apply(this)
         ThemePrefs.load(this)
         enableEdgeToEdge()
@@ -121,89 +123,23 @@ class MainActivity : FragmentActivity() {
                 window.setBackgroundDrawable(ColorDrawable(if (dark) AColor.BLACK else AColor.parseColor("#F4F4F0")))
             }
             SpendSenseTheme(dark) {
-                AppLockGate(this) {
-                    var setupDone by remember { mutableStateOf(isSetupDone(this@MainActivity)) }
-                    if (setupDone) AppShell() else SetupScreen(onDone = { setupDone = true })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppShell() {
-    var selected by rememberSaveable { mutableIntStateOf(0) }
-    var route by rememberSaveable(stateSaver = RouteSaver) { mutableStateOf<Route>(Route.Tabs) }
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-
-    // System back: secondary screen -> Home, other tab -> Home.
-    BackHandler(enabled = route != Route.Tabs) { route = if (route == Route.Import) Route.Settings else Route.Tabs }
-    BackHandler(enabled = route == Route.Tabs && selected != 0) { selected = 0 }
-
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            // Hidden on secondary screens and while typing so screens with their own imePadding keep their layout.
-            AnimatedVisibility(
-                visible = !imeVisible && route == Route.Tabs,
-                enter = fadeIn(tween(150)),
-                exit = fadeOut(tween(120)),
-            ) {
-                FlatNav(selected) { selected = it }
-            }
-        },
-    ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            when (route) {
-                Route.Tabs -> AnimatedContent(
-                    targetState = selected,
-                    transitionSpec = { fadeIn(tween(200, delayMillis = 40)) togetherWith fadeOut(tween(120)) },
-                    label = "tab",
-                ) { tab ->
-                    when (tab) {
-                        0 -> DashboardScreen(
-                            onSeeAllTransactions = { route = Route.Activity },
-                            onOpenSettings = { route = Route.Settings },
-                        )
-                        1 -> PortfolioScreen()
-                        else -> AssistantScreen()
+                // Lost database key / unreadable file: the recovery screen, never a crash loop or a silent wipe.
+                var health by remember { mutableStateOf<com.jayant.spendsense.security.StorageHealth.State?>(null) }
+                LaunchedEffect(Unit) {
+                    health = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        com.jayant.spendsense.security.StorageHealth.check {
+                            com.jayant.spendsense.data.TransactionRepository.get(applicationContext).pendingReview()
+                        }
                     }
                 }
-                Route.Activity -> TransactionsScreen(onBack = { route = Route.Tabs })
-                Route.Settings -> SettingsScreen(onBack = { route = Route.Tabs }, onOpenImport = { route = Route.Import })
-                Route.Import -> com.jayant.spendsense.imports.ImportScreen(
-                    onBack = { route = Route.Settings },
-                    emailSection = { com.jayant.spendsense.imports.email.EmailImportSection() },
-                )
-            }
-        }
-    }
-}
-
-/** Flat full-width bar: black, 1dp top hairline, three items with icon + tiny uppercase label. */
-@Composable
-private fun FlatNav(selected: Int, onSelect: (Int) -> Unit) {
-    val haptic = LocalHapticFeedback.current
-    Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.background).navigationBarsPadding()) {
-        Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.spend.hairline))
-        Row(Modifier.fillMaxWidth()) {
-            tabs.forEachIndexed { i, tab ->
-                val active = selected == i
-                val tint = if (active) MaterialTheme.colorScheme.onBackground else MaterialTheme.colorScheme.onSurfaceVariant
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .height(60.dp)
-                        .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Tab) {
-                            if (!active) haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSelect(i)
-                        }
-                        .semantics { this.selected = active; contentDescription = tab.label },
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
-                ) {
-                    Icon(tab.icon, null, tint = tint, modifier = Modifier.size(22.dp))
-                    Text(tab.label.uppercase(), style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 1.2.sp), color = tint, maxLines = 1, modifier = Modifier.padding(top = 4.dp))
+                when (health) {
+                    null -> Unit
+                    com.jayant.spendsense.security.StorageHealth.State.OK -> AppLockGate(this) {
+                        var setupDone by remember { mutableStateOf(isSetupDone(this@MainActivity)) }
+                        if (setupDone) AppShell() else SetupScreen(onDone = { setupDone = true })
+                    }
+                    // Recovery restores a backup or starts fresh; it is gated by the device lock like the app itself.
+                    else -> AppLockGate(this) { com.jayant.spendsense.ui.RecoveryScreen(health!!) }
                 }
             }
         }

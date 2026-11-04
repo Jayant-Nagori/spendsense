@@ -17,7 +17,9 @@ class PaymentNotificationListener : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        val pkg = sbn.packageName ?: return
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return
+        val receivedAt = android.os.SystemClock.elapsedRealtime()
+        val pkg = sbn.packageName?.let { sbn.debugAlias(it) } ?: return
         if (pkg !in TransactionParser.PAYMENT_PACKAGES) return
         val n = sbn.notification ?: return
         if (n.flags and Notification.FLAG_GROUP_SUMMARY != 0 || n.flags and Notification.FLAG_ONGOING_EVENT != 0) return
@@ -29,13 +31,34 @@ class PaymentNotificationListener : NotificationListenerService() {
         val app = applicationContext
         val key = sbn.key
         worker.execute {
-            val content = "$title\u0000$text"
+            // Only a fingerprint is kept in memory, never the notification text (which may be an OTP).
+            val content = com.jayant.spendsense.data.Dedupe.fingerprint("$title\u0000$text")
             if (lastTextByKey[key] == content) return@execute
             lastTextByKey[key] = content
             val parsed = TransactionParser.parseNotification(pkg, title, text, postTime) ?: return@execute
             val raw = listOfNotNull(title, text).joinToString(" — ")
-            ingestWithRetry { TransactionIngestor.ingest(app, parsed, TxnSource.NOTIFICATION, pkg, raw, live = true) }
+            com.jayant.spendsense.notify.PopupTiming.begin(receivedAt)
+            try {
+                ingestWithRetry { TransactionIngestor.ingest(app, parsed, TxnSource.NOTIFICATION, pkg, raw, live = true) }
+            } finally {
+                com.jayant.spendsense.notify.PopupTiming.end()
+            }
         }
+    }
+
+    /**
+     * Debug builds only (R8 removes this in release): `adb shell cmd notification post -t <title> <package> <text>`
+     * posts as com.android.shell; its tag names the payment app to emulate, for pop-up latency checks.
+     */
+    private fun StatusBarNotification.debugAlias(pkg: String): String =
+        if (pkg == "com.android.shell" && com.jayant.spendsense.platform.DebugGate.enabled()) tag ?: pkg else pkg
+
+    override fun onListenerConnected() {
+        super.onListenerConnected()
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return
+        // Open the encrypted database now, so the first payment after a cold start isn't slowed by SQLCipher's open.
+        worker.execute { runCatching { com.jayant.spendsense.data.TransactionRepository.get(applicationContext) } }
+        com.jayant.spendsense.ingest.CaptureService.sync(applicationContext)
     }
 
     override fun onListenerDisconnected() {

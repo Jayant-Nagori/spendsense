@@ -11,10 +11,15 @@ import com.jayant.spendsense.security.KeystoreCipher
 class EmailCredentials(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
+    init {
+        // Older versions kept the password's last four characters in clear text; drop them.
+        if (prefs.contains(K_LAST4)) prefs.edit().remove(K_LAST4).apply()
+    }
+
     val address: String get() = prefs.getString(K_ADDRESS, "").orEmpty()
 
     /** Last four characters of the saved password, for display only. */
-    val passwordLast4: String get() = prefs.getString(K_LAST4, "").orEmpty()
+    val passwordLast4: String get() = password()?.let { pw -> String(pw.copyOfRange((pw.size - 4).coerceAtLeast(0), pw.size)).also { pw.fill(' ') } }.orEmpty()
 
     val isConfigured: Boolean get() = address.isNotBlank() && prefs.contains(K_PASS)
 
@@ -36,12 +41,14 @@ class EmailCredentials(context: Context) {
         set(v) { prefs.edit().putInt(K_MONTHS, if (v in RANGES) v else 3).apply() }
 
     fun save(address: String, appPassword: String) {
+        com.jayant.spendsense.security.AppIntegrity.requireGenuine()
         val pw = normalizePassword(appPassword)
         val blob = KeystoreCipher.encrypt(KeystoreCipher.ALIAS_PREFS, pw.toByteArray(Charsets.UTF_8))
         prefs.edit()
             .putString(K_ADDRESS, address.trim())
             .putString(K_PASS, Base64.encodeToString(blob, Base64.NO_WRAP))
-            .putString(K_LAST4, pw.takeLast(4))
+            // No plaintext fragment of the password is kept (the old "last4" field is removed).
+            .remove(K_LAST4)
             .putLong(K_LAST_SYNC, 0L).putLong(K_COVERED, 0L)
             .putBoolean(K_ENABLED, true)
             .apply()
@@ -49,6 +56,7 @@ class EmailCredentials(context: Context) {
 
     /** Decrypts into memory for one connection. Null if nothing saved or the Keystore key is gone (e.g. after a wipe). */
     fun password(): CharArray? {
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return null
         val enc = prefs.getString(K_PASS, null) ?: return null
         return runCatching {
             String(KeystoreCipher.decrypt(KeystoreCipher.ALIAS_PREFS, Base64.decode(enc, Base64.NO_WRAP)), Charsets.UTF_8).toCharArray()

@@ -238,7 +238,7 @@ private fun PreviewHeader(vm: StatementImportViewModel) {
 private fun PreviewRowItem(row: PreviewRow, onToggle: () -> Unit) {
     val t = row.entry.txn
     val credit = t.type == TxnType.CREDIT
-    val date = Instant.ofEpochMilli(t.timestamp).atZone(StatementDates.IST).toLocalDate().format(DATE_FMT)
+    val date = com.jayant.spendsense.time.formatPattern(t.timestamp, StatementDates.IST, "d MMM yyyy")
     val meta = listOfNotNull(
         date, t.paymentMode?.name?.takeIf { it != "OTHER" }, if (row.entry.suggestSkip) "LIKELY COUNTED ALREADY" else null,
     ).joinToString(" · ")

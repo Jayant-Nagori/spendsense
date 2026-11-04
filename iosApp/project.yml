@@ -1,0 +1,74 @@
+# Reproducible Xcode project: `cd iosApp && xcodegen generate`. Never edit the generated .xcodeproj by hand.
+name: SpendSense
+options:
+  bundleIdPrefix: com.jayant
+  deploymentTarget:
+    iOS: "17.2"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "1.3.1"
+    CURRENT_PROJECT_VERSION: "5"
+    SWIFT_VERSION: "5.0"
+targets:
+  SpendSense:
+    type: application
+    platform: iOS
+    sources:
+      - path: SpendSense
+    info:
+      path: SpendSense/Info.plist
+      properties:
+        CFBundleDisplayName: SpendSense
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIRequiresFullScreen: true
+        UIUserInterfaceStyle: Dark
+        CADisableMinimumFrameDurationOnPhone: true
+        NSFaceIDUsageDescription: SpendSense uses Face ID to keep your finances private.
+        ITSAppUsesNonExemptEncryption: false
+        CFBundleURLTypes:
+          - CFBundleURLName: com.jayant.spendsense
+            CFBundleURLSchemes: [spendsense]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.jayant.spendsense
+        PRODUCT_NAME: SpendSense
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+        FRAMEWORK_SEARCH_PATHS: $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
+        OTHER_LDFLAGS: ["-framework", "Shared"]
+        # No entitlements on purpose: the app must re-sign with a free Apple ID (SideStore/AltStore).
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""
+        DEAD_CODE_STRIPPING: YES
+      configs:
+        # Release hardening: the shipped binary has no symbol table or debug info (the dSYM is produced next to
+        # the .app in Products/ and is never copied into the IPA), and no test hooks.
+        Release:
+          DEBUG_INFORMATION_FORMAT: dwarf-with-dsym
+          DEPLOYMENT_POSTPROCESSING: YES
+          STRIP_INSTALLED_PRODUCT: YES
+          STRIP_STYLE: all
+          STRIP_SWIFT_SYMBOLS: YES
+          COPY_PHASE_STRIP: YES
+          DEAD_CODE_STRIPPING: YES
+          ENABLE_TESTABILITY: NO
+          SWIFT_COMPILATION_MODE: wholemodule
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          GCC_OPTIMIZATION_LEVEL: s
+          VALIDATE_PRODUCT: YES
+    preBuildScripts:
+      - name: Build Kotlin framework (shared)
+        basedOnDependencyAnalysis: false
+        script: |
+          set -e
+          export JAVA_HOME="${JAVA_HOME:-$(/usr/libexec/java_home -v 21)}"
+          cd "$SRCROOT/.."
+          ./gradlew :shared:embedAndSignAppleFrameworkForXcode --console=plain

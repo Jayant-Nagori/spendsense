@@ -1,67 +1,22 @@
 package com.jayant.spendsense.notify
 
 import android.app.KeyguardManager
+import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings as AndroidSettings
+import android.util.Log
 import android.view.KeyEvent
+import android.view.View
 import android.view.WindowManager
 import android.widget.FrameLayout
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
@@ -77,56 +32,110 @@ import com.jayant.spendsense.BuildConfig
 import com.jayant.spendsense.data.Settings
 import com.jayant.spendsense.data.Transaction
 import com.jayant.spendsense.data.TransactionRepository
-import com.jayant.spendsense.ui.components.GhostButton
-import com.jayant.spendsense.ui.components.MoneyText
-import com.jayant.spendsense.ui.components.PrimaryButton
-import com.jayant.spendsense.ui.components.SpendCategories
-import com.jayant.spendsense.ui.components.SpendChip
-import com.jayant.spendsense.ui.components.SpendTextField
-import com.jayant.spendsense.ui.components.SplitEditor
-import com.jayant.spendsense.ui.components.formatTime
-import com.jayant.spendsense.ui.components.label
-import com.jayant.spendsense.ui.components.pressable
-import com.jayant.spendsense.ui.components.rememberSplitState
 import com.jayant.spendsense.ui.theme.SpendSenseTheme
-import kotlinx.coroutines.launch
 
 /**
- * Full-screen pop-up drawn over whatever app is open, right after a payment is detected. Needs "Display over other
- * apps". Payments that arrive while the phone is locked or another pop-up is open are queued and shown on the
- * next unlock (or when the current pop-up closes).
+ * Full-screen pop-up right after a payment is detected. Unlocked phone with "Display over other apps": an overlay
+ * window over any app. Locked / screen off / no overlay permission / overlay failed to attach: a full-screen-intent
+ * notification that opens [PaymentPopupActivity] (like an incoming call). Decisions live in [PopupGate].
+ * Timings and reasons are logged (debug builds; release strips Log), never message content.
  */
 object PaymentPopup {
+    private const val TAG = "SS-Popup"
     private val main = Handler(Looper.getMainLooper())
+    private val gate = PopupGate()
     private var current: Pair<FrameLayout, OverlayOwner>? = null
 
     private const val PREFS = "payment_popup"
     private const val KEY_QUEUE = "queue"
     private const val MAX_AGE_MS = 12L * 3600 * 1000
+    private const val ATTACH_CHECK_MS = 1_500L
 
     fun canShow(context: Context): Boolean = AndroidSettings.canDrawOverlays(context)
 
-    private fun enabled(app: Context) = canShow(app) && Settings(app).paymentPopup
+    /** Android 14+ needs the user's OK for full-screen intents; earlier versions grant it at install. */
+    fun canUseFullScreen(context: Context): Boolean =
+        Build.VERSION.SDK_INT < 34 || context.getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == true
 
-    private fun usable(app: Context): Boolean {
-        val locked = app.getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
-        val awake = app.getSystemService(PowerManager::class.java)?.isInteractive == true
-        return awake && !locked
+    private fun device(app: Context): PopupGate.Device {
+        val km = app.getSystemService(KeyguardManager::class.java)
+        val pm = app.getSystemService(PowerManager::class.java)
+        return PopupGate.Device(
+            popupEnabled = runCatching { Settings(app).paymentPopup }.getOrDefault(true),
+            overlayAllowed = canShow(app),
+            interactive = pm?.isInteractive == true,
+            keyguardLocked = km?.isKeyguardLocked == true,
+            fullScreenAllowed = canUseFullScreen(app),
+        )
     }
 
-    fun show(context: Context, txn: Transaction) {
+    /**
+     * A live debit was stored: posts its notification and shows the pop-up the fastest way the phone allows.
+     * Any thread. [receivedAt] is SystemClock.elapsedRealtime() when the SMS / notification reached the app.
+     */
+    fun present(context: Context, txn: Transaction, receivedAt: Long?) {
         val app = context.applicationContext
-        if (!enabled(app)) return
+        val stored = SystemClock.elapsedRealtime()
         main.post {
-            if (current != null || !usable(app)) enqueue(app, txn.id)
-            else runCatching { attach(app, txn) }
+            val now = SystemClock.elapsedRealtime()
+            val d = device(app)
+            val decision = gate.decide(txn.id, d, now)
+            val ingestMs = receivedAt?.let { stored - it }
+            when (decision.path) {
+                PopupGate.Path.OVERLAY -> {
+                    SplitPromptNotifier.notifyNewDebit(app, txn, fullScreen = false)
+                    if (!attach(app, txn, receivedAt)) fallback(app, txn, "overlay-add-failed")
+                }
+                PopupGate.Path.FULL_SCREEN -> if (fsiBudget(now)) SplitPromptNotifier.notifyNewDebit(app, txn, fullScreen = true) else {
+                    // A flood (e.g. spoofed SMS) gets ordinary notifications, not a screen takeover each (R4-10).
+                    SplitPromptNotifier.notifyNewDebit(app, txn, fullScreen = false); enqueue(app, txn.id)
+                }
+                PopupGate.Path.QUEUE -> {
+                    SplitPromptNotifier.notifyNewDebit(app, txn, fullScreen = false)
+                    enqueue(app, txn.id)
+                }
+                PopupGate.Path.NONE -> SplitPromptNotifier.notifyNewDebit(app, txn, fullScreen = false)
+            }
+            log("decide path=${decision.path} reason=${decision.reason} ingestMs=${ingestMs ?: -1} queueMs=${now - stored}")
         }
     }
 
-    /** Called when the user unlocks the phone: shows the oldest payment that is still waiting for an answer. */
+    private val fsiTimes = ArrayDeque<Long>()
+
+    /** At most 3 full-screen launches a minute. Main thread. */
+    private fun fsiBudget(now: Long): Boolean {
+        while (fsiTimes.isNotEmpty() && now - fsiTimes.first() > 60_000) fsiTimes.removeFirst()
+        if (fsiTimes.size >= 3) return false
+        fsiTimes.addLast(now); return true
+    }
+
+    /** Overlay could not be shown: re-post the same notification with a full-screen intent (heads-up when unlocked). */
+    private fun fallback(app: Context, txn: Transaction, reason: String) {
+        log("fallback reason=$reason")
+        if (canUseFullScreen(app) && fsiBudget(SystemClock.elapsedRealtime())) SplitPromptNotifier.notifyNewDebit(app, txn, fullScreen = true) else enqueue(app, txn.id)
+    }
+
+    /** Called on unlock, app resume and process start: shows the oldest payment still waiting for an answer. */
     fun onUnlock(context: Context) {
         val app = context.applicationContext
-        if (enabled(app)) main.post { showNext(app) }
+        main.post { showNext(app) }
+    }
+
+    /** Debit [id] turned out to be money in (the bank said "credited"): take down its pop-up and notification. */
+    fun withdraw(context: Context, id: Long) {
+        val app = context.applicationContext
+        runCatching { androidx.core.app.NotificationManagerCompat.from(app).cancel(id.toInt()) }
+        main.post {
+            removeFromQueue(app, id)
+            if (gate.currentId == id) dismissNow(app)
+            log("withdrawn")
+        }
+    }
+
+    /** Main thread. False when the overlay is already showing [id] (the activity should just close). */
+    fun claimForActivity(context: Context, id: Long): Boolean {
+        removeFromQueue(context.applicationContext, id)
+        return !(gate.currentId == id && gate.busy(SystemClock.elapsedRealtime()))
     }
 
     private val draining = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -149,6 +158,12 @@ object PaymentPopup {
     }
 
     @Synchronized
+    private fun removeFromQueue(app: Context, id: Long) {
+        val q = queue(app)
+        if (q.remove(id)) saveQueue(app, q)
+    }
+
+    @Synchronized
     private fun pollQueue(app: Context): Long? {
         val q = queue(app)
         if (q.isEmpty()) return null
@@ -159,7 +174,7 @@ object PaymentPopup {
 
     /** Main thread. Pops queued ids until one is still unanswered and recent, then shows it. One drain at a time. */
     private fun showNext(app: Context) {
-        if (current != null || !usable(app) || queue(app).isEmpty()) return
+        if (!gate.canDrain(device(app), SystemClock.elapsedRealtime()) || queue(app).isEmpty()) return
         if (!draining.compareAndSet(false, true)) return
         Thread({
             try {
@@ -170,16 +185,36 @@ object PaymentPopup {
                     val t = runCatching { repo.get(id) }.getOrNull()
                     if (t != null && !t.reviewed && System.currentTimeMillis() - t.timestamp < MAX_AGE_MS) next = t
                 }
-                next?.let { t -> main.post { if (current == null && usable(app)) runCatching { attach(app, t) } else enqueue(app, t.id) } }
+                next?.let { t ->
+                    main.post {
+                        if (gate.canDrain(device(app), SystemClock.elapsedRealtime())) {
+                            if (!attach(app, t, null)) fallback(app, t, "drain-add-failed")
+                        } else enqueue(app, t.id)
+                    }
+                }
             } finally {
                 draining.set(false)
             }
         }, "popup-next").start()
     }
 
-    private fun attach(app: Context, txn: Transaction) {
+    /** Called from a tap on our visible overlay, which is what lets a background app start an activity. */
+    private fun openLockedActivity(app: Context, txn: Transaction): Boolean = runCatching {
+        app.startActivity(
+            Intent(app, PaymentPopupActivity::class.java).putExtra(SplitActivity.EXTRA_TXN_ID, txn.id)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION),
+        )
+        log("activity-for-app-lock")
+    }.isSuccess
+
+    /** Main thread. True when addView succeeded; whether the window really attached is checked shortly after. */
+    private fun attach(app: Context, txn: Transaction, receivedAt: Long?): Boolean {
+        // With app lock on, payment details must sit behind the lock (R3 M3). The overlay still appears instantly, but
+        // locked; its Unlock opens the activity, whose AppLockGate asks for the biometric. Starting the activity
+        // straight from the background is blocked on Android 15+ unless an overlay is already showing.
+        val appLocked = runCatching { Settings(app).appLockEnabled }.getOrDefault(true)
         removeCurrent(app)
-        val wm = app.getSystemService(WindowManager::class.java) ?: return
+        val wm = app.getSystemService(WindowManager::class.java) ?: return false
         val owner = OverlayOwner().also { it.start() }
         val root = object : FrameLayout(app) {
             override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -200,11 +235,37 @@ object PaymentPopup {
                 return super.dispatchKeyEvent(event)
             }
         }
+        val started = SystemClock.elapsedRealtime()
+        root.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) {
+                gate.onAttached(txn.id)
+                val t = SystemClock.elapsedRealtime()
+                log("attached attachMs=${t - started} totalMs=${receivedAt?.let { t - it } ?: -1}")
+            }
+
+            override fun onViewDetachedFromWindow(v: View) {
+                // Our own dismiss already cleared [current]; anything else means the system took the window away.
+                if (current?.first === v) {
+                    log("detached-by-system")
+                    current = null
+                    gate.onDetached(txn.id)
+                    owner.stop()
+                }
+            }
+        })
         root.setViewTreeLifecycleOwner(owner)
         root.setViewTreeViewModelStoreOwner(owner)
         root.setViewTreeSavedStateRegistryOwner(owner)
         root.addView(ComposeView(app).apply {
-            setContent { SpendSenseTheme(darkTheme = true) { PopupContent(txn, onClose = { dismissNow(app) }) } }
+            setContent {
+                SpendSenseTheme(darkTheme = true) {
+                    if (appLocked) {
+                        LockedPrompt(onUnlock = { openLockedActivity(app, txn); dismissNow(app) }, onLater = { dismissNow(app) })
+                    } else {
+                        PaymentPopupContent(txn, onClose = { dismissNow(app) })
+                    }
+                }
+            }
         })
         val lp = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -222,13 +283,31 @@ object PaymentPopup {
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
             }
         }
-        wm.addView(root, lp)
+        gate.onAttaching(txn.id, started)
+        val added = runCatching { wm.addView(root, lp) }
+        if (added.isFailure) {
+            // e.g. BadTokenException / permission revoked: One UI fails quietly for background processes.
+            log("add-failed ${added.exceptionOrNull()?.javaClass?.simpleName}")
+            gate.onAttachFailed(txn.id)
+            owner.stop()
+            return false
+        }
         current = root to owner
+        main.postDelayed({
+            if (current?.first === root && !root.isAttachedToWindow) {
+                gate.onAttachFailed(txn.id)
+                removeCurrent(app)
+                fallback(app, txn, "never-attached")
+            }
+        }, ATTACH_CHECK_MS)
+        return true
     }
 
     private fun dismissNow(app: Context) {
+        val id = gate.currentId
         if (current == null) return
         removeCurrent(app)
+        gate.onDismissed(id)
         main.post { showNext(app) }
     }
 
@@ -238,6 +317,8 @@ object PaymentPopup {
         runCatching { app.getSystemService(WindowManager::class.java)?.removeView(root) }
         owner.stop()
     }
+
+    private fun log(msg: String) { Log.i(TAG, msg) }
 
     private class OverlayOwner : LifecycleOwner, ViewModelStoreOwner, SavedStateRegistryOwner {
         private val registry = LifecycleRegistry(this)
@@ -252,131 +333,20 @@ object PaymentPopup {
         }
 
         fun stop() {
+            if (registry.currentState == Lifecycle.State.DESTROYED) return
             registry.currentState = Lifecycle.State.DESTROYED
             viewModelStore.clear()
         }
     }
 }
 
-@Composable
-private fun PopupContent(txn: Transaction, onClose: () -> Unit) {
-    val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
-    val gold = MaterialTheme.colorScheme.primary
-    val grey = MaterialTheme.colorScheme.onSurfaceVariant
-    val enter = remember { Animatable(0f) }
-    var note by remember { mutableStateOf(txn.note.orEmpty()) }
-    var noteEdited by remember { mutableStateOf(false) }
-    var category by remember { mutableStateOf(txn.category) }
-    var splitting by remember { mutableStateOf(false) }
-    val split = rememberSplitState(txn.amount, key = txn.id)
-
-    LaunchedEffect(Unit) {
-        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-        enter.animateTo(1f, tween(380, easing = FastOutSlowInEasing))
-    }
-
-    fun close() {
-        scope.launch { enter.animateTo(0f, tween(200)); onClose() }
-    }
-
-    fun save(isSplit: Boolean, myShare: Double?) {
-        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-        val app = context.applicationContext
-        val text = note.trim().take(200).ifBlank { null }
-        val edited = noteEdited
-        val cat = category
-        Thread({
-            val repo = TransactionRepository.get(app)
-            repo.get(txn.id)?.let {
-                // Keep a note typed in the notification reply meanwhile unless the user edited the field here.
-                repo.update(it.copy(note = if (edited) text else it.note, category = cat, isSplit = isSplit, myShare = if (isSplit) myShare else null, reviewed = true))
-            }
-            NotificationManagerCompat.from(app).cancel(txn.id.toInt())
-        }, "popup-save").start()
-        close()
-    }
-
-    // Slow gold glow breathing behind the amount.
-    val glow by rememberInfiniteTransition(label = "glow").animateFloat(
-        0.08f, 0.24f, infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Reverse), label = "glowAlpha",
-    )
-    val lift = with(LocalDensity.current) { 140.dp.toPx() }
-    val p = enter.value
-
-    Box(
-        Modifier.fillMaxSize().background(Color.Black.copy(alpha = p)).drawBehind {
-            drawRect(
-                Brush.radialGradient(
-                    listOf(gold.copy(alpha = glow * p), Color.Transparent),
-                    center = Offset(size.width * 0.32f, size.height * 0.26f), radius = size.width * 0.8f,
-                ),
-            )
-        },
-    ) {
-        Column(
-            Modifier.fillMaxSize().graphicsLayer { translationY = (1f - p) * lift; alpha = p }
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .verticalScroll(rememberScrollState()).padding(horizontal = 24.dp).padding(top = 32.dp, bottom = 24.dp),
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.size(8.dp).background(gold))
-                Spacer(Modifier.size(10.dp))
-                Text(
-                    "PAYMENT DETECTED  ·  ${formatTime(txn.timestamp).uppercase()}",
-                    style = MaterialTheme.typography.labelSmall, color = gold, modifier = Modifier.weight(1f),
-                )
-                Text(
-                    "LATER", style = MaterialTheme.typography.labelMedium, color = grey,
-                    modifier = Modifier.pressable(role = null) { close() }.padding(12.dp),
-                )
-            }
-
-            Box(Modifier.fillMaxWidth().height(220.dp), contentAlignment = Alignment.CenterStart) {
-                MoneyText(
-                    txn.amount, animate = true,
-                    style = MaterialTheme.typography.displayLarge.copy(fontSize = 84.sp, lineHeight = 88.sp, fontWeight = FontWeight.ExtraBold),
-                    color = MaterialTheme.colorScheme.onSurface, symbolScale = 0.42f,
-                )
-            }
-
-            Text(
-                txn.counterparty?.takeIf { it.isNotBlank() }?.let { "to $it" } ?: "paid",
-                style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2, overflow = TextOverflow.Ellipsis,
-            )
-            val meta = listOfNotNull(txn.bank, txn.account?.let { "ending " + it.takeLast(4) }, txn.paymentMode?.label()).joinToString("  ·  ")
-            if (meta.isNotEmpty()) {
-                Text(meta, style = MaterialTheme.typography.bodyMedium, color = grey, modifier = Modifier.padding(top = 6.dp))
-            }
-
-            Spacer(Modifier.height(36.dp))
-            SpendTextField(note, { note = it.take(200); noteEdited = true }, "What was it for?")
-
-            Spacer(Modifier.height(24.dp))
-            Text("CATEGORY", style = MaterialTheme.typography.labelSmall, color = grey)
-            Spacer(Modifier.height(10.dp))
-            val cats = remember { listOf(txn.category) + SpendCategories.filter { it != txn.category } }
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                cats.forEach { c -> SpendChip(c, category == c, { category = c }) }
-            }
-
-            Spacer(Modifier.height(32.dp))
-            if (splitting) {
-                Column(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(16.dp)) {
-                    SplitEditor(split)
-                }
-                Spacer(Modifier.height(20.dp))
-                PrimaryButton("Save my share", { save(true, split.myShare) }, Modifier.fillMaxWidth(), enabled = split.isValid)
-                Spacer(Modifier.height(12.dp))
-                GhostButton("It was all mine", { save(false, null) }, Modifier.fillMaxWidth())
-            } else {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    PrimaryButton("All mine", { save(false, null) }, Modifier.weight(1f))
-                    GhostButton("I split it", { split.fullyMine = false; split.touched = true; splitting = true }, Modifier.weight(1f))
-                }
-            }
-        }
-    }
+/**
+ * When the SMS / notification behind the current ingest reached the app (elapsedRealtime), for pop-up timing logs.
+ * Ingest runs synchronously on the receiving thread, so a thread-local carries it to [PaymentPopup.present].
+ */
+object PopupTiming {
+    private val received = ThreadLocal<Long?>()
+    fun begin(at: Long = SystemClock.elapsedRealtime()) = received.set(at)
+    fun current(): Long? = received.get()
+    fun end() = received.remove()
 }

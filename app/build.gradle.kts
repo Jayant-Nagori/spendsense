@@ -6,6 +6,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+/** Release signing certificate fingerprint (CN=SpendSense, O=Jayant Nagori, C=IN). */
+val RELEASE_CERT_SHA256 = "adf4b21eb88f680422f6679ba10adc87435a8a03bb3514c8110b5b95c79c9fc7"
+
 android {
     namespace = "com.jayant.spendsense"
     compileSdk = 36
@@ -14,8 +17,10 @@ android {
         applicationId = "com.jayant.spendsense"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.1"
+        versionCode = rootProject.extra["appVersionCode"] as Int
+        versionName = rootProject.extra["appVersionName"] as String
+        // Runtime anti-tamper check (security/SignatureCheck.kt): empty = not checked (debug).
+        buildConfigField("String", "EXPECTED_CERT_SHA256", "\"\"")
     }
 
     // Release key lives outside the repo (~/spendsense-keys/keystore.properties). Without it, release falls back
@@ -36,6 +41,10 @@ android {
     }
     buildTypes {
         release {
+            // SHA-256 of the release signing certificate (public value, not a secret), from
+            // `apksigner verify --print-certs app/build/outputs/apk/release/app-release.apk`. A release APK signed
+            // with any other key (repackaged, or built without ~/spendsense-keys) shows the "not genuine" screen.
+            buildConfigField("String", "EXPECTED_CERT_SHA256", "\"$RELEASE_CERT_SHA256\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
@@ -59,6 +68,7 @@ android {
 kotlin { jvmToolchain(17) }
 
 dependencies {
+    implementation(project(":shared"))
     val composeBom = platform("androidx.compose:compose-bom:2025.06.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
@@ -75,6 +85,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
     implementation("androidx.biometric:biometric:1.1.0")
+    // Connected apps: OAuth sign-in in a Custom Tab
+    implementation("androidx.browser:browser:1.8.0")
+    implementation("androidx.work:work-runtime-ktx:2.10.0")
     implementation("net.zetetic:sqlcipher-android:4.6.1@aar")
     implementation("androidx.sqlite:sqlite:2.4.0")
     // Statement import: PDF text extraction (incl. password-protected statements)

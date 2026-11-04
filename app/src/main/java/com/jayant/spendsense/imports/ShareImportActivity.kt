@@ -22,6 +22,11 @@ import com.jayant.spendsense.ui.theme.SpendSenseTheme
 class ShareImportActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) {
+            startActivity(android.content.Intent(this, com.jayant.spendsense.ui.MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            finish()
+            return
+        }
         SecureWindow.apply(this)
         ThemePrefs.load(this)
         enableEdgeToEdge()
@@ -44,5 +49,15 @@ class ShareImportActivity : FragmentActivity() {
             else i.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
         Intent.ACTION_VIEW -> i.data
         else -> null
+    }?.takeIf { isAcceptableShareUri(it.scheme, it.authority, packageName) }
+
+    companion object {
+        /**
+         * Only another app's content:// document. Rejects file:// (a hostile app could point us at our own private
+         * files, e.g. databases/ or shared_prefs/) and anything served under our own package's authority.
+         */
+        fun isAcceptableShareUri(scheme: String?, authority: String?, ownPackage: String): Boolean =
+            scheme.equals("content", ignoreCase = true) && !authority.isNullOrBlank() &&
+                !authority.equals(ownPackage, ignoreCase = true) && !authority.startsWith("$ownPackage.", ignoreCase = true)
     }
 }

@@ -7,3 +7,4 @@ dependencyResolutionManagement {
 }
 rootProject.name = "SpendSense"
 include(":app")
+include(":shared")

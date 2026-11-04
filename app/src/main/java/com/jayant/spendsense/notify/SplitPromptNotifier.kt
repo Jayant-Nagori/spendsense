@@ -20,8 +20,10 @@ import com.jayant.spendsense.ui.components.formatRupees
 object SplitPromptNotifier {
     const val CHANNEL_ID = "payments"
     const val ACTION_FULLY_MINE = "com.jayant.spendsense.action.FULLY_MINE"
+    const val ACTION_FOR_SOMEONE = "com.jayant.spendsense.action.FOR_SOMEONE"
     const val ACTION_NOTE = "com.jayant.spendsense.action.NOTE"
     const val KEY_NOTE = "note"
+    const val KEY_WHO = "who_for"
 
     fun createChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -32,7 +34,11 @@ object SplitPromptNotifier {
         context.getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
     }
 
-    fun notifyNewDebit(context: Context, txn: Transaction) {
+    /**
+     * [fullScreen]: also attach a full-screen intent to [PaymentPopupActivity] (screen off / locked: it opens like an
+     * incoming call; in use: heads-up). Tapping the notification always opens the pop-up itself.
+     */
+    fun notifyNewDebit(context: Context, txn: Transaction, fullScreen: Boolean = false) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) return
@@ -56,6 +62,18 @@ object SplitPromptNotifier {
             flags,
         )
 
+        // Inline reply: type who it was for. Saves "paid for someone" in one step.
+        val forSomeoneIntent = PendingIntent.getBroadcast(
+            context, nid * 4 + 4,
+            Intent(context, SplitActionReceiver::class.java).setAction(ACTION_FOR_SOMEONE)
+                .putExtra(SplitActivity.EXTRA_TXN_ID, txn.id),
+            PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0),
+        )
+        val forSomeoneAction = NotificationCompat.Action.Builder(0, "For someone", forSomeoneIntent)
+            .addRemoteInput(RemoteInput.Builder(KEY_WHO).setLabel("Who for? (optional)").build())
+            .setAllowGeneratedReplies(false)
+            .build()
+
         // Inline reply: type what it was for straight from the notification. Must be mutable so the system can add the text.
         val noteIntent = PendingIntent.getBroadcast(
             context, nid * 4 + 3,
@@ -69,7 +87,7 @@ object SplitPromptNotifier {
             .build()
         val note = txn.note?.takeIf { it.isNotBlank() }
 
-        val who = txn.counterparty?.takeIf { it.isNotBlank() }
+        val who = com.jayant.spendsense.data.Payee.display(txn.counterparty)
         val amount = formatRupees(txn.amount)
         val title = if (who != null) "$amount paid to $who" else "$amount paid"
 
@@ -78,6 +96,13 @@ object SplitPromptNotifier {
             .setContentTitle("New payment detected")
             .setContentText("Open SpendSense to review it")
             .build()
+
+        val popup = PendingIntent.getActivity(
+            context, nid * 4,
+            Intent(context, PaymentPopupActivity::class.java).putExtra(SplitActivity.EXTRA_TXN_ID, txn.id)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION),
+            flags,
+        )
 
         val n = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_spend)
@@ -90,12 +115,22 @@ object SplitPromptNotifier {
             .setPublicVersion(public)
             .setColor(0xFFD6B97C.toInt())
             .setAutoCancel(true)
-            .setContentIntent(splitIntent(nid * 4))
-            .apply { if (note == null) addAction(noteAction) }
+            .setContentIntent(popup)
+            .apply { if (fullScreen) setFullScreenIntent(popup, true) }
+            // Own group per payment: when the system auto-groups an app's notifications it silences the children,
+            // which also suppresses the full-screen intent (seen on Android 15/16).
+            .setGroup("payment-${txn.id}")
+            .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+            // Android shows at most 3 actions, so "What for?" (also in the pop-up and the app) goes last and yields.
             .addAction(0, "Fully mine", fullyMine)
             .addAction(0, "I split it", splitIntent(nid * 4 + 2, startAsSplit = true))
+            .addAction(forSomeoneAction)
+            .apply { if (note == null) addAction(noteAction) }
             .build()
 
-        runCatching { NotificationManagerCompat.from(context).notify(nid, n) }
+        val nm = NotificationManagerCompat.from(context)
+        // A re-post with onlyAlertOnce would stay silent and could skip the full-screen launch: start fresh.
+        if (fullScreen) runCatching { nm.cancel(nid) }
+        runCatching { nm.notify(nid, n) }
     }
 }

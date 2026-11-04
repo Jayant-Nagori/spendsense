@@ -24,6 +24,7 @@ import com.jayant.spendsense.data.TxnType
 import com.jayant.spendsense.security.AppLockGate
 import com.jayant.spendsense.security.SecureWindow
 import com.jayant.spendsense.ui.ThemePrefs
+import com.jayant.spendsense.ui.isDark
 import com.jayant.spendsense.ui.components.SplitContent
 import com.jayant.spendsense.ui.theme.SpendSenseTheme
 import kotlinx.coroutines.Dispatchers
@@ -38,6 +39,11 @@ class SplitActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) {
+            startActivity(android.content.Intent(this, com.jayant.spendsense.ui.MainActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK))
+            finish()
+            return
+        }
         SecureWindow.apply(this)
         ThemePrefs.load(this)
 
@@ -59,19 +65,19 @@ class SplitActivity : FragmentActivity() {
                     val context = LocalContext.current
                     var txn by remember { mutableStateOf<Transaction?>(null) }
                     LaunchedEffect(txnId) {
-                        val t = withContext(Dispatchers.IO) { TransactionRepository.get(context).get(txnId) }
+                        val t = withContext(Dispatchers.IO) { runCatching { TransactionRepository.get(context).get(txnId) }.getOrNull() }
                         if (t == null || t.type != TxnType.DEBIT) finish() else txn = t
                     }
                     txn?.let { t ->
                         Column(Modifier.fillMaxWidth().padding(20.dp)) {
                             var note by remember { mutableStateOf<String?>(null) }
-                            SplitContent(t, saveLabel = "Save", startAsSplit = startAsSplit, onNote = { note = it }, onSave = { isSplit, share ->
+                            SplitContent(t, saveLabel = "Save", startAsSplit = startAsSplit, onNote = { note = it }, onSave = { s ->
                                 val app = applicationContext
                                 val text = note
                                 Thread {
                                     val repo = TransactionRepository.get(app)
                                     if (text != null) repo.setNote(t.id, text)
-                                    repo.setSplit(t.id, isSplit, share)
+                                    repo.setAnswer(t.id, s.isSplit, s.myShare, s.forOthers, s.paidForName)
                                     NotificationManagerCompat.from(app).cancel(t.id.toInt())
                                 }.start()
                                 finish()

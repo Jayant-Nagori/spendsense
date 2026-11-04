@@ -33,7 +33,7 @@ object PdfStatementReader {
         ensureInit(context)
         val input = context.contentResolver.openInputStream(uri) ?: throw StatementReadException("Could not open the file")
         val doc: PDDocument = try {
-            input.use { PDDocument.load(it, password.orEmpty()) }
+            input.use { PDDocument.load(CappedInputStream(it, MAX_PDF_BYTES), password.orEmpty()) }
         } catch (e: InvalidPasswordException) {
             throw PasswordRequiredException(wrongPassword = !password.isNullOrEmpty())
         } catch (e: OutOfMemoryError) {
@@ -54,4 +54,18 @@ object PdfStatementReader {
     }
 
     internal fun splitLines(text: String): List<String> = text.split(Regex("\r\n|\r|\n")).map { it.trim() }.filter { it.isNotEmpty() }
+}
+
+/** Longest PDF statement we will read (real ones are a few MB). */
+internal const val MAX_PDF_BYTES = 40L * 1024 * 1024
+
+/** Fails with [StatementReadException] once more than [max] bytes were read, so a hostile stream can't exhaust memory. */
+internal class CappedInputStream(private val inner: java.io.InputStream, private val max: Long) : java.io.FilterInputStream(inner) {
+    private var count = 0L
+    private fun add(n: Int): Int {
+        if (n > 0) { count += n; if (count > max) throw StatementReadException("That file is too large to be a statement") }
+        return n
+    }
+    override fun read(): Int = super.read().also { if (it >= 0) add(1) }
+    override fun read(b: ByteArray, off: Int, len: Int): Int = add(super.read(b, off, len))
 }

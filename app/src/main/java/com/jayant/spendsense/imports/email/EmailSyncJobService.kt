@@ -8,6 +8,7 @@ class EmailSyncJobService : JobService() {
     @Volatile private var worker: Thread? = null
 
     override fun onStartJob(params: JobParameters): Boolean {
+        if (com.jayant.spendsense.security.AppIntegrity.tampered) return false
         val creds = EmailCredentials(applicationContext)
         if (!creds.enabled) return false
         val t = Thread({

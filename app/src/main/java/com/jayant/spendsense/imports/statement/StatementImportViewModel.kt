@@ -22,7 +22,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
-import java.time.LocalDate
+import com.jayant.spendsense.time.atStartOfDayMillis
+import com.jayant.spendsense.time.plusDays
 
 sealed interface ImportPhase {
     data object Idle : ImportPhase
@@ -107,8 +108,18 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
             val l = PdfStatementReader.readLines(getApplication(), uri, password)
             l to StatementImporter.parseLines(l)
         } else {
-            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: throw StatementReadException("Could not open the file")
-            if (bytes.size > MAX_CSV_BYTES) throw StatementReadException("That file is too large to be a statement")
+            // Bounded read: a huge or endless stream fails fast instead of exhausting memory.
+            val bytes = resolver.openInputStream(uri)?.use { input ->
+                val buf = java.io.ByteArrayOutputStream()
+                val chunk = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(chunk)
+                    if (n < 0) break
+                    buf.write(chunk, 0, n)
+                    if (buf.size() > MAX_CSV_BYTES) throw StatementReadException("That file is too large to be a statement")
+                }
+                buf.toByteArray()
+            } ?: throw StatementReadException("Could not open the file")
             val text = String(bytes, Charsets.UTF_8)
             val l = text.lineSequence().map { it.trim() }.filter { it.isNotEmpty() }.toList()
             l to StatementImporter.parseCsvText(text)
@@ -174,7 +185,7 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
     private fun store(entries: List<StatementEntry>): Pair<Int, Int> {
         val repo = TransactionRepository.get(getApplication())
         val claimed = mutableSetOf<Long>()
-        val byDay = HashMap<LocalDate, List<Transaction>>()
+        val byDay = HashMap<kotlinx.datetime.LocalDate, List<Transaction>>()
         var added = 0
         var dup = 0
         for (e in entries) {
@@ -185,10 +196,10 @@ class StatementImportViewModel(app: Application) : AndroidViewModel(app) {
                 timestamp = p.timestamp, category = CategoryGuesser.guess(p.counterparty, e.description),
                 reviewed = true, note = "Statement import", paymentMode = p.paymentMode,
             )
-            val day = Instant.ofEpochMilli(p.timestamp).atZone(StatementDates.IST).toLocalDate()
+            val day = com.jayant.spendsense.time.localDateOf(p.timestamp, StatementDates.IST)
             val sameDay = byDay.getOrPut(day) {
-                val from = day.atStartOfDay(StatementDates.IST).toInstant().toEpochMilli()
-                repo.between(from, day.plusDays(1).atStartOfDay(StatementDates.IST).toInstant().toEpochMilli())
+                val from = day.atStartOfDayMillis(StatementDates.IST)
+                repo.between(from, day.plusDays(1).atStartOfDayMillis(StatementDates.IST))
             }
             val dupOf = repo.findDuplicate(txn)?.also { claimed += it.id } ?: StatementDedupe.matchOnSameDay(txn, sameDay, claimed)
             if (dupOf != null || repo.insertIfNew(txn) == null) dup++ else added++

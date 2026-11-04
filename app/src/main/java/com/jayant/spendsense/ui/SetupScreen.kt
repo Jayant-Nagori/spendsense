@@ -68,6 +68,11 @@ private fun batteryOk(c: Context) = c.getSystemService(PowerManager::class.java)
 
 private fun overlayOk(c: Context) = AndroidSettings.canDrawOverlays(c)
 
+private fun fullScreenOk(c: Context) = com.jayant.spendsense.notify.PaymentPopup.canUseFullScreen(c)
+
+/** Android 14+ asks the user for full-screen notifications; older versions grant them at install. */
+private val NEEDS_FSI_STEP = Build.VERSION.SDK_INT >= 34
+
 private fun Context.open(intent: Intent, fallback: Intent? = null) {
     runCatching { startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
         .onFailure { fallback?.let { f -> runCatching { startActivity(f.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } } }
@@ -97,6 +102,7 @@ fun SetupScreen(onDone: () -> Unit) {
     val listener = remember(tick) { listenerOk(context) }
     val battery = remember(tick) { batteryOk(context) }
     val overlay = remember(tick) { overlayOk(context) }
+    val fullScreen = remember(tick) { fullScreenOk(context) }
     // Apps installed from a browser on Android 13+ get SMS / notification access blocked as "restricted settings".
     var smsRefused by remember { mutableStateOf(false) }
 
@@ -118,7 +124,9 @@ fun SetupScreen(onDone: () -> Unit) {
         onDone()
     }
 
-    val doneCount = listOf(sms, notifs, overlay, listener, battery).count { it }
+    val steps = listOfNotNull(sms, notifs, overlay, listener, battery, if (NEEDS_FSI_STEP) fullScreen else null)
+    val doneCount = steps.count { it }
+    val total = steps.size
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).statusBarsPadding().navigationBarsPadding()
@@ -126,13 +134,15 @@ fun SetupScreen(onDone: () -> Unit) {
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("SETUP  ·  $doneCount OF 5", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("SETUP  ·  $doneCount OF $total", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Let's catch every payment", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
             Text(
                 "Allow these once. Everything stays encrypted on this phone.",
                 style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+
+        com.jayant.spendsense.ui.components.ScamWarningCard()
 
         Column {
             SetupStep(
@@ -188,12 +198,20 @@ fun SetupScreen(onDone: () -> Unit) {
                         fallback = appInfo(context),
                     )
                 },
-                last = true,
+                last = !NEEDS_FSI_STEP,
             )
+            if (NEEDS_FSI_STEP) {
+                SetupStep(
+                    6, "Pop up when the phone is locked", "Lets the payment pop-up open like an incoming call when the screen is off. Turn on \"Full-screen notifications\".",
+                    done = fullScreen, action = "OPEN",
+                    onAction = { com.jayant.spendsense.openFullScreenIntentSettings(context) },
+                    last = true,
+                )
+            }
         }
 
-        PrimaryButton(if (doneCount == 5) "Start" else "Continue", ::finish, Modifier.fillMaxWidth())
-        if (doneCount < 5) {
+        PrimaryButton(if (doneCount == total) "Start" else "Continue", ::finish, Modifier.fillMaxWidth())
+        if (doneCount < total) {
             Text(
                 "You can finish the rest later in Settings → Capture.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,

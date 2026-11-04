@@ -5,3 +5,27 @@ local.properties
 .idea/
 *.iml
 .kotlin/
+iosApp/build/
+iosApp/*.xcodeproj/xcuserdata/
+iosApp/*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Local credentials, signing material and financial data
+.DS_Store
+.env
+.env.*
+!.env.example
+keystore.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.mobileprovision
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.apk
+*.aab
+*.ipa
+*.dSYM/
+iosApp/*.xcodeproj/
